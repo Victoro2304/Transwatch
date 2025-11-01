@@ -62,17 +62,17 @@ struct Configuracion {
 
 // --- Temporizadores para lógica no bloqueante (NoDelay) ---
 unsigned long previousMillisSensors = 0;
-const long intervalSensors = 1000;
+const long intervalSensors = 3000;
 
 unsigned long previousMillisTCP = 0;
-const long intervalTCP = 5000;
+const long intervalTCP = 6000;
 
 unsigned long previousMillisNTP = 0;
 const long intervalNTP = 60000 * 5;
 
 // --- Variables para el control automático de la barrera ---
 unsigned long barreraAbiertaTimestamp = 0;
-const long tiempoBarreraAbierta = 5000;
+const long tiempoBarreraAbierta = 9000;
 bool esperandoCierreAutomaticoBarrera = false;
 
 // --- Estados de la Máquina de Estados ---
