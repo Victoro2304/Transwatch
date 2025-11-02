@@ -1,5 +1,5 @@
 // ==========================================================================
-// Sistema de Parking Inteligente con ESP32
+// Sistema de Parking Inteligente con ESP32 - CON MQTT
 // ==========================================================================
 
 // --- Bibliotecas ---
@@ -11,14 +11,16 @@
 #include <ESP32Servo.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
+#include <PubSubClient.h>  
 
 // --- Configuración WiFi ---
 const char* ssid = "Mega-2.4G-EAAD";
 const char* password = "YFCfuJbM5s";
 
-// --- Configuración del Servidor TCP para la PC ---
-const char* pc_host = "192.168.100.7";
-const uint16_t pc_port = 8888;
+// --- Configuración MQTT ---  
+const char* mqtt_server = "192.168.100.7"; 
+const char* mqtt_topic_sensors = "transwatch/sensors";
+const char* mqtt_topic_commands = "transwatch/commands";
 
 // --- Definición de Pines ---
 const int LDR_PIN = 34;
@@ -33,7 +35,8 @@ const int SERVO_PIN = 13;
 DHT dht(DHT_PIN, DHT11);
 Servo barreraServo;
 AsyncWebServer server(80);
-WiFiClient clientTCP;
+WiFiClient espClient;           // ✅ CAMBIO: Cliente WiFi para MQTT
+PubSubClient mqttClient(espClient); // ✅ NUEVO: Cliente MQTT
 
 // --- NTP Client para la hora ---
 WiFiUDP ntpUDP;
@@ -82,7 +85,7 @@ enum SystemState {
   STATE_PROCESSING_LOGIC,
   STATE_UPDATING_ACTUATORS,
   STATE_MANAGING_BARRIER,
-  STATE_SENDING_DATA_TCP
+  STATE_SENDING_DATA_MQTT  
 };
 SystemState currentState = STATE_INITIALIZING;
 
@@ -90,7 +93,7 @@ SystemState currentState = STATE_INITIALIZING;
 void leerSensores();
 void procesarLogica();
 void actualizarActuadores();
-void enviarDatosTCP();
+void publicarDatosMQTT();  
 void configurarServidorWeb();
 void notFound(AsyncWebServerRequest *request);
 void handleGetStatus(AsyncWebServerRequest *request);
@@ -98,6 +101,10 @@ void handlePostConfig(AsyncWebServerRequest *request);
 void handlePostBarrera(AsyncWebServerRequest *request);
 void abrirBarrera();
 void cerrarBarrera();
+
+void setupMqtt();
+void mqttCallback(char* topic, byte* payload, unsigned int length);
+void reconnectMqtt();
 
 // ======================= SETUP =======================
 void setup() {
@@ -152,6 +159,8 @@ void setup() {
   server.begin();
   Serial.println("Servidor HTTP iniciado.");
 
+  setupMqtt(); // ✅ NUEVO: Inicializar MQTT
+
   currentState = STATE_READING_SENSORS;
   previousMillisSensors = millis();
   previousMillisTCP = millis();
@@ -161,6 +170,12 @@ void setup() {
 // ======================= LOOP =======================
 void loop() {
   unsigned long currentMillis = millis();
+
+
+  if (!mqttClient.connected()) {
+    reconnectMqtt();
+  }
+  mqttClient.loop();
 
   if (currentMillis - previousMillisNTP >= intervalNTP) {
     previousMillisNTP = currentMillis;
@@ -200,13 +215,13 @@ void loop() {
           Serial.println("Barrera cerrada automáticamente por temporizador.");
         }
       }
-      currentState = STATE_SENDING_DATA_TCP;
+      currentState = STATE_SENDING_DATA_MQTT; 
       break;
 
-    case STATE_SENDING_DATA_TCP:
+    case STATE_SENDING_DATA_MQTT:  
       if (currentMillis - previousMillisTCP >= intervalTCP) {
           previousMillisTCP = currentMillis;
-          enviarDatosTCP();
+          publicarDatosMQTT();  
       }
       currentState = STATE_READING_SENSORS; 
       break;
@@ -287,54 +302,101 @@ void cerrarBarrera() {
   }
 }
 
-void enviarDatosTCP() {
+// ======================= FUNCIONES MQTT =======================  
+
+void setupMqtt() {
+  mqttClient.setServer(mqtt_server, 1883);
+  mqttClient.setCallback(mqttCallback);
+}
+
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  // Procesar comandos recibidos (ej: abrir barrera remotamente)
+  String message;
+  for (int i = 0; i < length; i++) {
+    message += (char)payload[i];
+  }
+  
+  Serial.print("MQTT Mensaje recibido [");
+  Serial.print(topic);
+  Serial.print("]: ");
+  Serial.println(message);
+  
+  if (String(topic) == mqtt_topic_commands) {
+    if (message == "abrir_barrera") {
+      abrirBarrera();
+      Serial.println("Comando MQTT: Barrera abierta");
+    } else if (message == "cerrar_barrera") {
+      cerrarBarrera();
+      Serial.println("Comando MQTT: Barrera cerrada");
+    }
+  }
+}
+
+void reconnectMqtt() {
+  // Loop hasta que estemos reconectados
+  while (!mqttClient.connected()) {
+    Serial.print("Intentando conexión MQTT...");
+    
+    // Intentar conectar
+    if (mqttClient.connect("ESP32_Parking")) {
+      Serial.println("conectado");
+      // Una vez conectado, suscribirse a comandos
+      mqttClient.subscribe(mqtt_topic_commands);
+    } else {
+      Serial.print("falló, rc=");
+      Serial.print(mqttClient.state());
+      Serial.println(" intentando de nuevo en 5 segundos");
+      delay(5000);
+    }
+  }
+}
+
+void publicarDatosMQTT() {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("TCP: WiFi no conectado.");
+    Serial.println("MQTT: WiFi no conectado.");
     return;
   }
 
-  if (clientTCP.connect(pc_host, pc_port)) {
-    Serial.println("TCP: Conectado al servidor PC.");
-    StaticJsonDocument<512> jsonDoc;
-    
-    jsonDoc["timestamp"] = ultima_actualizacion_timestamp;
-    
-    if (isnan(temperatura)) {
-      jsonDoc["temperatura"] = nullptr;
-    } else {
-      jsonDoc["temperatura"] = temperatura;
-    }
-    
-    if (isnan(humedad)) {
-      jsonDoc["humedad"] = nullptr;
-    } else {
-      jsonDoc["humedad"] = humedad;
-    }
-    
-    jsonDoc["luz_adc"] = luz_adc;
-    jsonDoc["distancia_cm"] = distancia_cm;
-    jsonDoc["vehiculo_en_entrada_detectado"] = vehiculo_en_entrada_detectado;
-    jsonDoc["barrera_abierta"] = barrera_abierta;
-    jsonDoc["luces_parking_encendidas"] = luces_parking_encendidas;
-    jsonDoc["alarma_temperatura_activa"] = alarma_temperatura_activa;
-    
-    JsonObject configObj = jsonDoc.createNestedObject("config");
-    configObj["distancia_ocupado_cm"] = config.distancia_deteccion_vehiculo_cm;
-    configObj["umbral_luz_adc"] = config.umbral_luz_adc;
-    configObj["temperatura_alerta_celsius"] = config.temperatura_alerta_celsius;
-
-    String output;
-    serializeJson(jsonDoc, output);
-    
-    clientTCP.println(output); 
-    Serial.println("TCP: Datos enviados: " + output);
-    clientTCP.stop();
-    Serial.println("TCP: Desconectado.");
+  if (!mqttClient.connected()) {
+    reconnectMqtt();
+  }
+  
+  StaticJsonDocument<512> jsonDoc;
+  
+  jsonDoc["device_id"] = "ESP32_Parking_01";
+  jsonDoc["timestamp"] = ultima_actualizacion_timestamp;
+  
+  if (isnan(temperatura)) {
+    jsonDoc["temp_celsius"] = nullptr;
   } else {
-    Serial.print("TCP: Fallo al conectar a ");
-    Serial.print(pc_host);
-    Serial.print(":");
-    Serial.println(pc_port);
+    jsonDoc["temp_celsius"] = temperatura;
+  }
+  
+  if (isnan(humedad)) {
+    jsonDoc["humedad_porcentaje"] = nullptr;
+  } else {
+    jsonDoc["humedad_porcentaje"] = humedad;
+  }
+  
+  jsonDoc["luz_adc"] = luz_adc;
+  jsonDoc["distancia_cm"] = distancia_cm;
+  jsonDoc["vehiculo_en_entrada_detectado"] = vehiculo_en_entrada_detectado;
+  jsonDoc["barrera_abierta"] = barrera_abierta;
+  jsonDoc["luces_parking_encendidas"] = luces_parking_encendidas;
+  jsonDoc["alarma_temperatura_activa"] = alarma_temperatura_activa;
+  
+  JsonObject configObj = jsonDoc.createNestedObject("config");
+  configObj["distancia_ocupado_cm"] = config.distancia_deteccion_vehiculo_cm;
+  configObj["umbral_luz_adc"] = config.umbral_luz_adc;
+  configObj["temperatura_alerta_celsius"] = config.temperatura_alerta_celsius;
+
+  String output;
+  serializeJson(jsonDoc, output);
+  
+  if (mqttClient.publish(mqtt_topic_sensors, output.c_str())) {
+    Serial.println("✅ Datos enviados via MQTT");
+  } else {
+    Serial.println("❌ Error enviando datos MQTT");
   }
 }
 
@@ -349,15 +411,15 @@ void configurarServidorWeb() {
     jsonDoc["timestamp"] = ultima_actualizacion_timestamp;
 
     if (isnan(temperatura)) {
-      jsonDoc["temperatura"] = nullptr;
+      jsonDoc["temp_celsius"] = nullptr;
     } else {
-      jsonDoc["temperatura"] = temperatura;
+      jsonDoc["temp_celsius"] = temperatura;
     }
 
     if (isnan(humedad)) {
-      jsonDoc["humedad"] = nullptr;
+      jsonDoc["humedad_porcentaje"] = nullptr;
     } else {
-      jsonDoc["humedad"] = humedad;
+      jsonDoc["humedad_porcentaje"] = humedad;
     }
     
     jsonDoc["luz_adc"] = luz_adc;
@@ -461,4 +523,3 @@ void configurarServidorWeb() {
 void notFound(AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "No encontrado");
 }
-

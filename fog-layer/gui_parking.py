@@ -7,6 +7,45 @@ from datetime import datetime, timedelta
 from PIL import Image, ImageTk 
 import os
 from dotenv import load_dotenv
+import websocket
+import threading
+import json
+
+class WebSocketClient:
+    def __init__(self, gui_instance):
+        self.gui = gui_instance
+        self.ws = None
+        self.connected = False
+        
+    def connect(self):
+        def on_message(ws, message):
+            try:
+                alerta = json.loads(message)
+                self.gui.mostrar_alerta_en_gui(alerta)
+            except Exception as e:
+                print(f"Error procesando mensaje WebSocket: {e}")
+                
+        def on_error(ws, error):
+            print(f"WebSocket error: {error}")
+            self.connected = False
+            
+        def on_close(ws, close_status_code, close_msg):
+            print("WebSocket connection closed")
+            self.connected = False
+            
+        def on_open(ws):
+            print("WebSocket connection opened")
+            self.connected = True
+            
+        self.ws = websocket.WebSocketApp("ws://localhost:8765",
+                                        on_open=on_open,
+                                        on_message=on_message,
+                                        on_error=on_error,
+                                        on_close=on_close)
+        
+        thread = threading.Thread(target=self.ws.run_forever)
+        thread.daemon = True
+        thread.start()
 
 # Cargar variables de entorno desde .env, requiere instalacion de python-dotenv
 load_dotenv()
@@ -51,6 +90,13 @@ stats_canvas_widget = None
 stats_toolbar = None
 entry_fecha_inicio = None
 entry_fecha_fin = None
+
+def mostrar_alerta_en_gui(self, alerta):
+    """Muestra alertas recibidas via WebSocket"""
+    messagebox.showwarning(
+        f"Alerta del Sistema - {alerta['priority'].upper()}", 
+        f"{alerta['message']}\n\nTimestamp: {alerta['timestamp']}"
+    )
 
 # --- Funciones de Base de Datos ---
 def crear_conexion_db():

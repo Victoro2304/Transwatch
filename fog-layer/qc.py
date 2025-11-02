@@ -1,14 +1,12 @@
-# qc_simple.py - Control de Calidad Simplificado
-
 class SimpleQualityControl:
     def __init__(self, window_size=10, z_threshold=2.5):
         self.window_size = window_size
         self.z_threshold = z_threshold
         self.sensor_data = {
-            'temperatura': [],
-            'humedad': [],
-            'luz_adc': [],
-            'distancia_cm': []
+            'temperatura': [],      
+            'humedad': [],           
+            'luz_adc': [],          
+            'distancia_cm': []      
         }
 
     def aplicar_qc(self, datos):
@@ -18,6 +16,14 @@ class SimpleQualityControl:
             if sensor not in self.sensor_data:
                 continue
 
+            # Manejar valores None/nulos
+            if valor is None:
+                resultados[sensor] = {
+                    'aprobado': False,
+                    'razon': 'Valor nulo'
+                }
+                continue
+
             ventana = self.sensor_data[sensor]
 
             # Si no hay suficientes datos, aceptar el valor
@@ -25,7 +31,7 @@ class SimpleQualityControl:
                 ventana.append(valor)
                 resultados[sensor] = {
                     'aprobado': True,
-                    'razon': 'Datos insuficientes'
+                    'razon': 'Datos insuficientes para validación'
                 }
                 continue
 
@@ -39,24 +45,27 @@ class SimpleQualityControl:
 
             resultados[sensor] = {
                 'aprobado': aprobado,
-                'razon': 'Dentro del rango normal' if aprobado else f'Valor fuera de rango (z={z:.2f})',
+                'razon': 'Dentro del rango normal' if aprobado else f'Valor atípico (z={z:.2f})',
                 'promedio': round(promedio, 2),
-                'desviacion': round(desviacion, 2)
+                'desviacion': round(desviacion, 2),
+                'z_score': round(z, 2)
             }
 
-            # Mantener el tamaño máximo de la ventana
-            if len(ventana) >= self.window_size:
-                ventana.pop(0)
-            ventana.append(valor)
+            # Solo agregar a la ventana si es válido
+            if aprobado:
+                if len(ventana) >= self.window_size:
+                    ventana.pop(0)
+                ventana.append(valor)
 
-        # Verifica que temperatura y humedad sean válidos
+        # Verificar que temperatura y humedad sean válidos
         sensores_criticos = ['temperatura', 'humedad']
         todos_aprobados = all(
             resultados.get(s, {}).get('aprobado', True)
-            for s in sensores_criticos
+            for s in sensores_criticos if s in datos
         )
 
         return {
             'todos_aprobados': todos_aprobados,
             'resultados': resultados
         }
+
