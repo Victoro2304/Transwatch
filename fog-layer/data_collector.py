@@ -13,7 +13,7 @@ load_dotenv()
 
 AZURE_CONN_STRING = os.getenv('AZURE_IOT_CONN_STRING')
 
-LOCAL_MQTT_BROKER = os.getenv('MQTT_BROKER', 'localhost')
+LOCAL_MQTT_BROKER = os.getenv('MQTT_BROKER')
 LOCAL_MQTT_PORT = int(os.getenv('MQTT_PORT', '1883'))
 
 # Topico MQTT al que se suscribe para recibir datos de los sensores del ESP32 

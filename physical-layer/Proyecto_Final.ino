@@ -60,7 +60,7 @@ bool alarma_temperatura_activa = false;
 // --- Parámetros Configurables (con valores por defecto) ---
 struct Configuracion {
   int distancia_deteccion_vehiculo_cm = 15;
-  int umbral_luz_adc = 3000;
+  int umbral_luz_adc = 400;
   float temperatura_alerta_celsius = 30.0;
 } config;
 
@@ -284,7 +284,7 @@ void procesarLogica() {
     vehiculo_en_entrada_detectado = false;
   }
 
-  luces_parking_encendidas = (luz_adc > config.umbral_luz_adc);
+  luces_parking_encendidas = (luz_adc < config.umbral_luz_adc);
   alarma_temperatura_activa = (temperatura >= config.temperatura_alerta_celsius && !isnan(temperatura));
 }
 
