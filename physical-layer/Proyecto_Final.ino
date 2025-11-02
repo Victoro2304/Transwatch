@@ -11,14 +11,17 @@
 #include <ESP32Servo.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
+#include <PubSubClient.h>
 
 // --- Configuración WiFi ---
 const char* ssid = "Mega-2.4G-EAAD";
 const char* password = "YFCfuJbM5s";
 
-// --- Configuración del Servidor TCP para la PC ---
-const char* pc_host = "192.168.100.7";
-const uint16_t pc_port = 8888;
+// --- Configuración MQTT Broker - HiveMQ ---
+const char* mqtt_broker = "broker.hivemq.com";  // Broker público de HiveMQ
+const uint16_t mqtt_port = 1883;
+const char* mqtt_topic_publish = "transwatch/parking/esp32";  // Tópico único para tu proyecto
+const char* mqtt_client_id = "ESP32-Parking-Transwatch";
 
 // --- Definición de Pines ---
 const int LDR_PIN = 34;
@@ -33,7 +36,8 @@ const int SERVO_PIN = 13;
 DHT dht(DHT_PIN, DHT11);
 Servo barreraServo;
 AsyncWebServer server(80);
-WiFiClient clientTCP;
+WiFiClient wifiClient;
+PubSubClient mqttClient(wifiClient);
 
 // --- NTP Client para la hora ---
 WiFiUDP ntpUDP;
@@ -64,11 +68,14 @@ struct Configuracion {
 unsigned long previousMillisSensors = 0;
 const long intervalSensors = 3000;
 
-unsigned long previousMillisTCP = 0;
-const long intervalTCP = 6000;
+unsigned long previousMillisMQTT = 0;
+const long intervalMQTT = 6000;
 
 unsigned long previousMillisNTP = 0;
 const long intervalNTP = 60000 * 5;
+
+unsigned long previousMillisMQTTReconnect = 0;
+const long intervalMQTTReconnect = 5000;
 
 // --- Variables para el control automático de la barrera ---
 unsigned long barreraAbiertaTimestamp = 0;
@@ -82,7 +89,7 @@ enum SystemState {
   STATE_PROCESSING_LOGIC,
   STATE_UPDATING_ACTUATORS,
   STATE_MANAGING_BARRIER,
-  STATE_SENDING_DATA_TCP
+  STATE_SENDING_DATA_MQTT
 };
 SystemState currentState = STATE_INITIALIZING;
 
@@ -90,7 +97,8 @@ SystemState currentState = STATE_INITIALIZING;
 void leerSensores();
 void procesarLogica();
 void actualizarActuadores();
-void enviarDatosTCP();
+void enviarDatosMQTT();
+void reconnectMQTT();
 void configurarServidorWeb();
 void notFound(AsyncWebServerRequest *request);
 void handleGetStatus(AsyncWebServerRequest *request);
@@ -152,15 +160,33 @@ void setup() {
   server.begin();
   Serial.println("Servidor HTTP iniciado.");
 
+  // Configurar MQTT
+  mqttClient.setServer(mqtt_broker, mqtt_port);
+  Serial.print("Intentando conectar al broker MQTT: ");
+  Serial.print(mqtt_broker);
+  Serial.print(":");
+  Serial.println(mqtt_port);
+
   currentState = STATE_READING_SENSORS;
   previousMillisSensors = millis();
-  previousMillisTCP = millis();
+  previousMillisMQTT = millis();
   previousMillisNTP = millis();
+  previousMillisMQTTReconnect = millis();
 }
 
 // ======================= LOOP =======================
 void loop() {
   unsigned long currentMillis = millis();
+
+  // Mantener la conexión MQTT
+  if (!mqttClient.connected()) {
+    if (currentMillis - previousMillisMQTTReconnect >= intervalMQTTReconnect) {
+      previousMillisMQTTReconnect = currentMillis;
+      reconnectMQTT();
+    }
+  } else {
+    mqttClient.loop();
+  }
 
   if (currentMillis - previousMillisNTP >= intervalNTP) {
     previousMillisNTP = currentMillis;
@@ -200,13 +226,13 @@ void loop() {
           Serial.println("Barrera cerrada automáticamente por temporizador.");
         }
       }
-      currentState = STATE_SENDING_DATA_TCP;
+      currentState = STATE_SENDING_DATA_MQTT;
       break;
 
-    case STATE_SENDING_DATA_TCP:
-      if (currentMillis - previousMillisTCP >= intervalTCP) {
-          previousMillisTCP = currentMillis;
-          enviarDatosTCP();
+    case STATE_SENDING_DATA_MQTT:
+      if (currentMillis - previousMillisMQTT >= intervalMQTT) {
+          previousMillisMQTT = currentMillis;
+          enviarDatosMQTT();
       }
       currentState = STATE_READING_SENSORS; 
       break;
@@ -287,54 +313,63 @@ void cerrarBarrera() {
   }
 }
 
-void enviarDatosTCP() {
+void reconnectMQTT() {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("TCP: WiFi no conectado.");
+    Serial.println("MQTT: WiFi no conectado.");
     return;
   }
 
-  if (clientTCP.connect(pc_host, pc_port)) {
-    Serial.println("TCP: Conectado al servidor PC.");
-    StaticJsonDocument<512> jsonDoc;
-    
-    jsonDoc["timestamp"] = ultima_actualizacion_timestamp;
-    
-    if (isnan(temperatura)) {
-      jsonDoc["temperatura"] = nullptr;
-    } else {
-      jsonDoc["temperatura"] = temperatura;
-    }
-    
-    if (isnan(humedad)) {
-      jsonDoc["humedad"] = nullptr;
-    } else {
-      jsonDoc["humedad"] = humedad;
-    }
-    
-    jsonDoc["luz_adc"] = luz_adc;
-    jsonDoc["distancia_cm"] = distancia_cm;
-    jsonDoc["vehiculo_en_entrada_detectado"] = vehiculo_en_entrada_detectado;
-    jsonDoc["barrera_abierta"] = barrera_abierta;
-    jsonDoc["luces_parking_encendidas"] = luces_parking_encendidas;
-    jsonDoc["alarma_temperatura_activa"] = alarma_temperatura_activa;
-    
-    JsonObject configObj = jsonDoc.createNestedObject("config");
-    configObj["distancia_ocupado_cm"] = config.distancia_deteccion_vehiculo_cm;
-    configObj["umbral_luz_adc"] = config.umbral_luz_adc;
-    configObj["temperatura_alerta_celsius"] = config.temperatura_alerta_celsius;
-
-    String output;
-    serializeJson(jsonDoc, output);
-    
-    clientTCP.println(output); 
-    Serial.println("TCP: Datos enviados: " + output);
-    clientTCP.stop();
-    Serial.println("TCP: Desconectado.");
+  Serial.print("Intentando conexión MQTT...");
+  if (mqttClient.connect(mqtt_client_id)) {
+    Serial.println("conectado!");
   } else {
-    Serial.print("TCP: Fallo al conectar a ");
-    Serial.print(pc_host);
-    Serial.print(":");
-    Serial.println(pc_port);
+    Serial.print("falló, rc=");
+    Serial.print(mqttClient.state());
+    Serial.println(" reintentando en 5 segundos");
+  }
+}
+
+void enviarDatosMQTT() {
+  if (!mqttClient.connected()) {
+    Serial.println("MQTT: No conectado al broker.");
+    return;
+  }
+
+  StaticJsonDocument<512> jsonDoc;
+  
+  jsonDoc["timestamp"] = ultima_actualizacion_timestamp;
+  
+  if (isnan(temperatura)) {
+    jsonDoc["temperatura_celsius"] = nullptr;
+  } else {
+    jsonDoc["temperatura_celsius"] = temperatura;
+  }
+  
+  if (isnan(humedad)) {
+    jsonDoc["humedad_porcentaje"] = nullptr;
+  } else {
+    jsonDoc["humedad_porcentaje"] = humedad;
+  }
+  
+  jsonDoc["luz_adc"] = luz_adc;
+  jsonDoc["distancia_cm"] = distancia_cm;
+  jsonDoc["vehiculo_en_entrada_detectado"] = vehiculo_en_entrada_detectado;
+  jsonDoc["barrera_abierta"] = barrera_abierta;
+  jsonDoc["luces_parking_encendidas"] = luces_parking_encendidas;
+  jsonDoc["alarma_temperatura_activa"] = alarma_temperatura_activa;
+  
+  JsonObject configObj = jsonDoc.createNestedObject("config");
+  configObj["distancia_ocupado_cm"] = config.distancia_deteccion_vehiculo_cm;
+  configObj["umbral_luz_adc"] = config.umbral_luz_adc;
+  configObj["temperatura_alerta_celsius"] = config.temperatura_alerta_celsius;
+
+  String output;
+  serializeJson(jsonDoc, output);
+  
+  if (mqttClient.publish(mqtt_topic_publish, output.c_str())) {
+    Serial.println("MQTT: Datos publicados: " + output);
+  } else {
+    Serial.println("MQTT: Error al publicar datos");
   }
 }
 

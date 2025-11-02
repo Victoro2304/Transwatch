@@ -17,8 +17,7 @@ LOCAL_MQTT_BROKER = os.getenv('MQTT_BROKER', 'localhost')
 LOCAL_MQTT_PORT = int(os.getenv('MQTT_PORT', '1883'))
 
 # Topico MQTT al que se suscribe para recibir datos de los sensores del ESP32 
-# SOLAMENTE EN CASO DE QUE NUESTRA CONEXION A LA CAPA FISICA TERMINE SIENDO MQTT
-LOCAL_MQTT_TOPIC = os.getenv('MQTT_TOPIC', 'sensor/parking/esp')
+LOCAL_MQTT_TOPIC = os.getenv('MQTT_TOPIC', 'transwatch/parking/esp32')
 
 # Conexiones globales
 azure_client = None
@@ -89,17 +88,22 @@ def enviar_a_azure_iot_hub(datos):
 
 def on_message_local(client, userdata, msg):
     payload = msg.payload.decode('utf-8')
-    print(f"\n<<< [FOG Recibido] Tópico: {msg.topic}")
+    print(f"\n<<<Topico: {msg.topic}")
+    print(f"Payload: {payload}")
 
     try:
         datos_json = json.loads(payload)
+        print(f"JSON decodificado correctamente")
+        
         if aplicar_qc(datos_json):
+            print(f"Control de calidad liberado")
             enviar_a_azure_iot_hub(datos_json)
         else:
-            print(f"Mesanje descartado por problemas de QC.")
+            print(f"Mensaje descartado por problemas de QC.")
         
-    except json.JSONDecodeError:
-        print(f"Error al decodificar el JSON recibido: {payload}")
+    except json.JSONDecodeError as e:
+        print(f"Error al decodificar el JSON recibido: {e}")
+        print(f"Payload recibido: {payload}")
     except Exception as e:
         print(f"Error inesperado procesando el mensaje: {e}")
 
