@@ -26,7 +26,7 @@ local_mqtt_client = None
 
 # Aseguramiento de calidad de datos en la niebla
 def aplicar_qc(datos):
-    temp = datos.get('temp_celsius', None)
+    temp = datos.get('temperatura_celsius', None)
     TEMP_MIN_LOGICO = -10.0
     TEMP_MAX_LOGICO = 60.0
 
@@ -36,7 +36,7 @@ def aplicar_qc(datos):
         return False
 
     # Validacion de humedad y luz no nulas
-    if datos.get('humedad_porcentaje', None) is None or datos.getr('luz_adc', None) is None:
+    if datos.get('humedad_porcentaje', None) is None or datos.get('luz_adc', None) is None:
         print("Lectura de datos incompleta. Revise los sensores.")
         return False 
 
@@ -58,7 +58,7 @@ def iniciar_conexion_azure():
         print("Azure error al conectar con el IoT Hub")
         return None
     
-#Logica de mensajeria MQTT
+# Logica de mensajeria MQTT
 def on_connect_local(client, userdata, flags, rc):
     if rc== 0:
         print(f"MQTT Conectado al broker {LOCAL_MQTT_BROKER}:{LOCAL_MQTT_PORT}")
@@ -80,7 +80,7 @@ def enviar_a_azure_iot_hub(datos):
         message.custom_properties["QCStatus"] = "Clean"
         message.custom_properties["DeviceID"] = "ESP32-Parking"
 
-        azure_client.send_messageI(message)
+        azure_client.send_message(message)
         print(f"Sent: {torometry_data}")
         print("Mensaje limpio publicado a la nube de Azure.")
     except Exception as e:
