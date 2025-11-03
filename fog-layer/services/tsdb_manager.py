@@ -9,29 +9,29 @@ load_dotenv()
 
 class TimeSeriesManager:
     def __init__(self):
-        #Parámetros de InfluxDB v3
-        self.token = os.getenv("INFLUXDB_V3_TOKEN")
-        self.host = os.getenv("INFLUXDB_V3_HOST", "http://localhost:8181")
-        self.database = os.getenv("INFLUXDB_V3_DATABASE", "sensores_transwatch")
+        #Parámetros de InfluxDB
+        self.token = os.getenv("INFLUXDB_TOKEN")
+        self.host = os.getenv("INFLUXDB_HOST")
+        self.database = os.getenv("INFLUXDB_DATABASE")
 
         if not self.token:
-            print("Error: INFLUXDB_V3_TOKEN no está definido en tu archivo .env")
+            print("Error: INFLUXDB_TOKEN no está definido en tu archivo .env")
 
         try:
-            #Inicializar cliente v3
+            #Inicializar cliente
             self.client = InfluxDBClient3(
                 host=self.host,
                 token=self.token,
                 database=self.database
             )
-            print(f"Cliente InfluxDB v3 inicializado. Conectado a '{self.host}' (DB: '{self.database}')")
+            print(f"Cliente InfluxDB inicializado. Conectado a '{self.host}' (DB: '{self.database}')")
         except Exception as e:
-            print(f"Error al inicializar cliente InfluxDB v3: {e}")
+            print(f"Error al inicializar cliente InfluxDB: {e}")
             self.client = None
 
     def almacenar_lectura(self, datos, device_id, qc_status):
         """
-        Almacena un diccionario de datos de sensores en InfluxDB v3.
+        Almacena un diccionario de datos de sensores en InfluxDB.
         'datos' debe ser el JSON decodificado del ESP32.
         """
         if not self.client:
@@ -64,18 +64,18 @@ class TimeSeriesManager:
 
             # Escribimos en InfluxDB
             self.client.write(record=point, write_precision="s")
-            print(f"Datos almacenados en InfluxDB V3 para {device_id}")
+            print(f"Datos almacenados en InfluxDB para {device_id}")
             return True
 
         except Exception as e:
-            print(f"Error almacenando en InfluxDB V3: {e}")
+            print(f"Error almacenando en InfluxDB: {e}")
             return False
 
     def close(self):
         """Cierra el cliente de InfluxDB."""
         if self.client:
             self.client.close()
-            print("Cliente InfluxDB v3 cerrado.")
+            print("Cliente InfluxDB cerrado.")
 
 # Bloque para probar la clase individualmente
 if __name__ == "__main__":

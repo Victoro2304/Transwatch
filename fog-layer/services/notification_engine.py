@@ -201,3 +201,23 @@ class NotificationEngine:
 
         except Exception as e:
             print(f"Error enviando email: {e}")
+
+    # Almacenar alerta en base de datos
+    def _almacenar_alerta_bd(self, alerta):
+        """Almacena la alerta en base de datos (implementacion basica)"""
+        try:
+            # Por ahora solo imprimimos, puedes agregar MySQL u otra BD despues
+            print(f"[BD] Alerta guardada: {alerta['type']} - {alerta['message']}")
+            # TODO: Implementar almacenamiento en MySQL si es necesario
+        except Exception as e:
+            print(f"Error almacenando alerta en BD: {e}")
+
+    # Activar buzzer fisico
+    def _activar_buzzer(self):
+        """Activa el buzzer (implementacion basica)"""
+        try:
+            print("BUZZER ACTIVADO - Alerta critica detectada")
+            # TODO: Implementar activacion real del buzzer si tienes uno conectado
+            # Ejemplo: GPIO.output(BUZZER_PIN, GPIO.HIGH)
+        except Exception as e:
+            print(f"Error activando buzzer: {e}")

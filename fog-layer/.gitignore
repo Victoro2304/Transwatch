@@ -1,7 +1,23 @@
+# Variables de entorno sensibles
 .env
+
+# Bases de datos locales
 /db
 /influxdb3_data
 /influxdb3_plugins
+
+# Certificados SSL
 /ssl
+
+# Configuracion local
 /config
-pruebas.py
+
+# Python cache
+\__pycache__
+
+# Virtual environments
+env/
+
+# IDE
+.vscode/
+

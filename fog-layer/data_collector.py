@@ -10,11 +10,11 @@ from dotenv import load_dotenv
 
 import paho.mqtt.client as paho
 from azure.iot.device import IoTHubDeviceClient, Message
-from tsdbmanager import TimeSeriesManager
 
-# Importar las clases de QC y NotificationEngine
-from qc import SimpleQualityControl
-from notificationEngine import NotificationEngine
+# Importar desde los nuevos modulos organizados
+from services.tsdb_manager import TimeSeriesManager
+from services.notification_engine import NotificationEngine
+from quality.qc import SimpleQualityControl
 
 # Cargar variables de entorno
 load_dotenv()
@@ -138,8 +138,8 @@ def enviar_a_azure_iot_hub(datos):
     except Exception as e:
         print(f"Error al mandar mensaje a la nube de Azure: {e}")
 
-async def procesar_alertas(datos, resultado_qc):
-  """Procesa las alertas de forma asíncrona"""
+def procesar_alertas_sync(datos, resultado_qc):
+  """Procesa las alertas de forma síncrona (ejecuta asyncio internamente)"""
   try:
     datos_alertas = {
       'temperatura_celsius': datos.get('temperatura_celsius'),
@@ -161,16 +161,24 @@ async def procesar_alertas(datos, resultado_qc):
     else:
       qc_message = "QC aprobado"
     
-    # Evaluar alertas
+    # Evaluar alertas (síncrono)
     alertas = notification_engine.evaluar_alertas(
       datos_alertas, 
       qc_status=resultado_qc['todos_aprobados'],
       qc_message=qc_message
     )
     
-    # Enviar notificaciones
-    for alerta_info in alertas:
-      await notification_engine.enviar_notificaciones(alerta_info['alerta'], alerta_info['canales'])
+    # Enviar notificaciones usando un nuevo event loop
+    if alertas:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            for alerta_info in alertas:
+                loop.run_until_complete(
+                    notification_engine.enviar_notificaciones(alerta_info['alerta'], alerta_info['canales'])
+                )
+        finally:
+            loop.close()
       
   except Exception as e:
     print(f"Error procesando alertas: {e}")
@@ -212,8 +220,8 @@ def on_message_local(client, userdata, msg):
         else:
             print("Mensaje descartado por problemas de QC.")
         
-        # Procesar alertas en un nuevo event loop
-        asyncio.run(procesar_alertas(datos_json, resultado_qc))
+        # Procesar alertas (ahora usando función síncrona)
+        procesar_alertas_sync(datos_json, resultado_qc)
         
     except json.JSONDecodeError as e:
         print(f"Error al decodificar el JSON recibido: {e}")

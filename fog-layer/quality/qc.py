@@ -3,8 +3,8 @@ class SimpleQualityControl:
         self.window_size = window_size
         self.z_threshold = z_threshold
         self.sensor_data = {
-            'temperatura': [],      
-            'humedad': [],           
+            'temperatura_celsius': [],      
+            'humedad_porcentaje': [],           
             'luz_adc': [],          
             'distancia_cm': []      
         }
@@ -58,7 +58,7 @@ class SimpleQualityControl:
                 ventana.append(valor)
 
         # Verificar que temperatura y humedad sean válidos
-        sensores_criticos = ['temperatura', 'humedad']
+        sensores_criticos = ['temperatura_celsius', 'humedad_porcentaje']
         todos_aprobados = all(
             resultados.get(s, {}).get('aprobado', True)
             for s in sensores_criticos if s in datos
