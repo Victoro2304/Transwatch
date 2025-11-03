@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 import paho.mqtt.client as paho
 from azure.iot.device import IoTHubDeviceClient, Message
+from tsdbmanager import TimeSeriesManager
 
 # Importar las clases de QC y NotificationEngine
 from qc import SimpleQualityControl
@@ -25,6 +26,7 @@ LOCAL_MQTT_TOPIC = os.getenv('MQTT_TOPIC', 'transwatch/parking/esp32')
 
 # Conexiones globales
 azure_client = None
+tsdbmanager = TimeSeriesManager()
 local_mqtt_client = None
 
 # Instancias globales para QC y Notificaciones
@@ -44,58 +46,54 @@ def start_websocket_server():
     except Exception as e:
         print(f"Error crítico en WebSocket server: {e}")
 
-# Validaciones rápidas previas al QC (CORREGIDAS para campos reales del ESP32)
+# Validaciones rápidas previas al QC
 def validacion_rapida(datos):
-    """Validaciones básicas de rangos lógicos antes del QC avanzado"""
-    # CORRECCIÓN: Usar los nombres reales que envía el ESP32
-    temp = datos.get('temperatura', None)  # Cambiado de 'temperatura_celsius'
-    TEMP_MIN_LOGICO = -10.0
-    TEMP_MAX_LOGICO = 60.0
+  """Validaciones básicas de rangos lógicos antes del QC avanzado"""
+  temp = datos.get('temperatura_celsius', None)
+  TEMP_MIN_LOGICO = -10.0
+  TEMP_MAX_LOGICO = 60.0
 
-    # Validacion en el rango de temperatura logico
-    if temp is None or temp < TEMP_MIN_LOGICO or temp > TEMP_MAX_LOGICO:
-        print(f"Lectura de temperatura anomala detectada: {temp} C°.")
-        return False, f"Temperatura fuera de rango lógico: {temp}°C"
+  # Validacion en el rango de temperatura logico
+  if temp is None or temp < TEMP_MIN_LOGICO or temp > TEMP_MAX_LOGICO:
+    print(f"Lectura de temperatura anomala detectada: {temp} C°.")
+    return False, f"Temperatura fuera de rango lógico: {temp}°C"
 
-    # CORRECCIÓN: Usar los nombres reales que envía el ESP32
-    if datos.get('humedad', None) is None or datos.get('luz_adc', None) is None:
-        print("Lectura de datos incompleta. Revise los sensores.")
-        return False, "Datos incompletos (humedad o luz nulos)"
+  if datos.get('humedad_porcentaje', None) is None or datos.get('luz_adc', None) is None:
+    print("Lectura de datos incompleta. Revise los sensores.")
+    return False, "Datos incompletos (humedad o luz nulos)"
 
-    return True, "Validación rápida aprobada"
+  return True, "Validación rápida aprobada"
 
-# Aseguramiento de calidad de datos CORREGIDO
+# Aseguramiento de calidad de datos
 def aplicar_qc(datos):
-    # Primero aplicar validación rápida
-    valido_rapido, mensaje_rapido = validacion_rapida(datos)
-    if not valido_rapido:
-        # Crear resultado de QC consistente para validación rápida fallida
-        resultado_fallo = {
-            'todos_aprobados': False,
-            'resultados': {
-                'validacion_rapida': {
-                    'aprobado': False,
-                    'razon': mensaje_rapido,
-                    'promedio': None,
-                    'desviacion': None,
-                    'z_score': None
-                }
-            }
+  # Primero aplicar validación rápida
+  valido_rapido, mensaje_rapido = validacion_rapida(datos)
+  if not valido_rapido:
+    resultado_fallo = {
+      'todos_aprobados': False,
+      'resultados': {
+        'validacion_rapida': {
+          'aprobado': False,
+          'razon': mensaje_rapido,
+          'promedio': None,
+          'desviacion': None,
+          'z_score': None
         }
-        return resultado_fallo
-    
-    # CORRECCIÓN: Usar los nombres reales que envía el ESP32
-    datos_para_qc = {
-        'temperatura': datos.get('temperatura'),        # Cambiado de 'temperatura_celsius'
-        'humedad': datos.get('humedad'),                # Cambiado de 'humedad_porcentaje'
-        'luz_adc': datos.get('luz_adc'),
-        'distancia_cm': datos.get('distancia_cm')
+      }
     }
-    
-    # Aplicar control de calidad
-    resultado_qc = qc_engine.aplicar_qc(datos_para_qc)
-    
-    return resultado_qc
+    return resultado_fallo
+  
+  datos_para_qc = {
+    'temperatura_celsius': datos.get('temperatura_celsius'),
+    'humedad_porcentaje': datos.get('humedad_porcentaje'),
+    'luz_adc': datos.get('luz_adc'),
+    'distancia_cm': datos.get('distancia_cm')
+  }
+ 
+  # Aplicar control de calidad
+  resultado_qc = qc_engine.aplicar_qc(datos_para_qc)
+  
+  return resultado_qc
 
 # Crear la conexión con Azure
 def iniciar_conexion_azure():
@@ -141,43 +139,41 @@ def enviar_a_azure_iot_hub(datos):
         print(f"Error al mandar mensaje a la nube de Azure: {e}")
 
 async def procesar_alertas(datos, resultado_qc):
-    """Procesa las alertas de forma asíncrona"""
-    try:
-        # Usar los datos REALES del ESP32
-        datos_alertas = {
-            'temperatura_celsius': datos.get('temperatura'),  # Mapear para alertas
-            'humedad_porcentaje': datos.get('humedad'),      # Mapear para alertas
-            'luz_adc': datos.get('luz_adc'),
-            'distancia_cm': datos.get('distancia_cm'),
-            'vehiculo_en_entrada_detectado': datos.get('vehiculo_en_entrada_detectado', False),
-            'barrera_abierta': datos.get('barrera_abierta', False),
-            'luces_parking_encendidas': datos.get('luces_parking_encendidas', False),
-            'alarma_temperatura_activa': datos.get('alarma_temperatura_activa', False)
-        }
-        
-        # Crear mensaje de QC para alertas
-        if not resultado_qc['todos_aprobados']:
-            qc_message = " | ".join([
-                f"{sensor}: {resultado['razon']}" 
-                for sensor, resultado in resultado_qc['resultados'].items() 
-                if not resultado.get('aprobado', True)
-            ])
-        else:
-            qc_message = "QC aprobado"
-        
-        # Evaluar alertas
-        alertas = notification_engine.evaluar_alertas(
-            datos_alertas, 
-            qc_status=resultado_qc['todos_aprobados'],
-            qc_message=qc_message
-        )
-        
-        # Enviar notificaciones
-        for alerta_info in alertas:
-            await notification_engine.enviar_notificaciones(alerta_info['alerta'], alerta_info['canales'])
-            
-    except Exception as e:
-        print(f"Error procesando alertas: {e}")
+  """Procesa las alertas de forma asíncrona"""
+  try:
+    datos_alertas = {
+      'temperatura_celsius': datos.get('temperatura_celsius'),
+      'humedad_porcentaje': datos.get('humedad_porcentaje'),
+      'luz_adc': datos.get('luz_adc'),
+      'distancia_cm': datos.get('distancia_cm'),
+      'vehiculo_en_entrada_detectado': datos.get('vehiculo_en_entrada_detectado', False),
+      'barrera_abierta': datos.get('barrera_abierta', False),
+      'luces_parking_encendidas': datos.get('luces_parking_encendidas', False),
+      'alarma_temperatura_activa': datos.get('alarma_temperatura_activa', False)
+    }
+    
+    if not resultado_qc['todos_aprobados']:
+        qc_message = " | ".join([
+        f"{sensor}: {resultado['razon']}" 
+        for sensor, resultado in resultado_qc['resultados'].items() 
+        if not resultado.get('aprobado', True)
+      ])
+    else:
+      qc_message = "QC aprobado"
+    
+    # Evaluar alertas
+    alertas = notification_engine.evaluar_alertas(
+      datos_alertas, 
+      qc_status=resultado_qc['todos_aprobados'],
+      qc_message=qc_message
+    )
+    
+    # Enviar notificaciones
+    for alerta_info in alertas:
+      await notification_engine.enviar_notificaciones(alerta_info['alerta'], alerta_info['canales'])
+      
+  except Exception as e:
+    print(f"Error procesando alertas: {e}")
 
 def on_message_local(client, userdata, msg):
     payload = msg.payload.decode('utf-8')
@@ -207,6 +203,12 @@ def on_message_local(client, userdata, msg):
         if resultado_qc['todos_aprobados']:
             print("Control de calidad aprobado - enviando a Azure")
             enviar_a_azure_iot_hub(datos_json)
+            print("Enviando a InfluxDB v3")
+            tsdbmanager.almacenar_lectura(
+                datos=datos_json,
+                device_id="ESP32-Parking-Transwatch",
+                qc_status="Clean"
+            )
         else:
             print("Mensaje descartado por problemas de QC.")
         

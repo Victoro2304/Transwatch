@@ -1,7 +1,7 @@
 # tsdb_manager.py - Gestor de Base de Datos de Series Temporales
 import os
-from influxdb_client import InfluxDBClient, Point
-from influxdb_client.client.write_api import SYNCHRONOUS
+import time
+from influxdb_client_3 import InfluxDBClient3
 from dotenv import load_dotenv
 
 # Cargar variables de entorno desde .env
@@ -9,39 +9,93 @@ load_dotenv()
 
 class TimeSeriesManager:
     def __init__(self):
-        self.token = os.getenv("INFLUXDB_TOKEN")
-        self.org = os.getenv("INFLUXDB_ORG", "transwatch")
-        self.bucket = os.getenv("INFLUXDB_BUCKET", "parking_data")
-        self.url = os.getenv("INFLUXDB_URL", "http://localhost:8086")
+        #Parámetros de InfluxDB v3
+        self.token = os.getenv("INFLUXDB_V3_TOKEN")
+        self.host = os.getenv("INFLUXDB_V3_HOST", "http://localhost:8181")
+        self.database = os.getenv("INFLUXDB_V3_DATABASE", "sensores_transwatch")
 
-        # Inicializar cliente de InfluxDB
-        self.client = InfluxDBClient(url=self.url, token=self.token, org=self.org)
-        self.write_api = self.client.write_api(write_options=SYNCHRONOUS)
-        self.query_api = self.client.query_api()
+        if not self.token:
+            print("Error: INFLUXDB_V3_TOKEN no está definido en tu archivo .env")
+
+        try:
+            #Inicializar cliente v3
+            self.client = InfluxDBClient3(
+                host=self.host,
+                token=self.token,
+                database=self.database
+            )
+            print(f"Cliente InfluxDB v3 inicializado. Conectado a '{self.host}' (DB: '{self.database}')")
+        except Exception as e:
+            print(f"Error al inicializar cliente InfluxDB v3: {e}")
+            self.client = None
 
     def almacenar_lectura(self, datos, device_id, qc_status):
-        try:
-            # Crear el punto de medición
-            point = (
-                Point("sensor_reading")
-                .tag("device_id", device_id)
-                .tag("qc_status", str(qc_status))
-                .field("temp_celsius", float(datos.get("temp_celsius", 0.0)))
-                .field("humedad_porcentaje", float(datos.get("humedad_porcentaje", 0.0)))
-                .field("luz_adc", float(datos.get("luz_adc", 0.0)))
-                .field("distancia_cm", float(datos.get("distancia_cm", 0.0)))
-                .field("vehiculo_en_entrada_detectado", bool(datos.get("vehiculo_en_entrada_detectado", False)))
-                .field("barrera_abierta", bool(datos.get("barrera_abierta", False)))
-                .field("luces_parking_encendidas", bool(datos.get("luces_parking_encendidas", False)))
-                .field("alarma_temperatura_activa", bool(datos.get("alarma_temperatura_activa", False)))
-            )
+        """
+        Almacena un diccionario de datos de sensores en InfluxDB v3.
+        'datos' debe ser el JSON decodificado del ESP32.
+        """
+        if not self.client:
+            print("Cliente InfluxDB no inicializado. No se pueden guardar datos.")
+            return False
 
-            # Escribir en InfluxDB
-            self.write_api.write(bucket=self.bucket, org=self.org, record=point)
-            print(f"✅ Datos almacenados en InfluxDB para dispositivo {device_id}")
+        try:
+            # Limpiamos los campos (fields)
+            fields_limpios = {
+                "temp_celsius": float(datos.get("temperatura_celsius", 0.0) or 0.0),
+                "humedad_porcentaje": float(datos.get("humedad_porcentaje", 0.0) or 0.0),
+                "luz_adc": float(datos.get("luz_adc", 0.0) or 0.0),
+                "distancia_cm": float(datos.get("distancia_cm", 0.0) or 0.0),
+                "vehiculo_en_entrada_detectado": bool(datos.get("vehiculo_en_entrada_detectado", False)),
+                "barrera_abierta": bool(datos.get("barrera_abierta", False)),
+                "luces_parking_encendidas": bool(datos.get("luces_parking_encendidas", False)),
+                "alarma_temperatura_activa": bool(datos.get("alarma_temperatura_activa", False))
+            }
+            
+            # Creamos el punto de datos como un diccionario
+            point = {
+                "measurement": "sensor_reading",  # Nombre de la "tabla"
+                "tags": {
+                    "device_id": device_id, 
+                    "qc_status": str(qc_status)
+                },
+                "fields": fields_limpios,
+                "time": int(time.time())  # Timestamp en segundos
+            }
+
+            # Escribimos en InfluxDB
+            self.client.write(record=point, write_precision="s")
+            print(f"Datos almacenados en InfluxDB V3 para {device_id}")
             return True
 
         except Exception as e:
-            print(f"Error almacenando en InfluxDB: {e}")
+            print(f"Error almacenando en InfluxDB V3: {e}")
             return False
 
+    def close(self):
+        """Cierra el cliente de InfluxDB."""
+        if self.client:
+            self.client.close()
+            print("Cliente InfluxDB v3 cerrado.")
+
+# Bloque para probar la clase individualmente
+if __name__ == "__main__":
+    print("Probando TimeSeriesManager...")
+    manager = TimeSeriesManager()
+    
+    # Datos de prueba
+    datos_prueba = {
+        "temperatura_celsius": 25.5,
+        "humedad_porcentaje": 45.2,
+        "luz_adc": 300,
+        "distancia_cm": 999,
+        "vehiculo_en_entrada_detectado": False,
+        "barrera_abierta": False,
+        "luces_parking_encendidas": False,
+        "alarma_temperatura_activa": False
+    }
+
+    if manager.client:
+        manager.almacenar_lectura(datos_prueba, "ESP32_Test_01", "Clean")
+        manager.close()
+    else:
+        print("No se pudo inicializar el cliente, revisa tu .env y conexión.")

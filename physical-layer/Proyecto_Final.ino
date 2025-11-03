@@ -284,7 +284,7 @@ void procesarLogica() {
     vehiculo_en_entrada_detectado = false;
   }
 
-  luces_parking_encendidas = (luz_adc < config.umbral_luz_adc);
+  luces_parking_encendidas = (luz_adc > config.umbral_luz_adc);
   alarma_temperatura_activa = (temperatura >= config.temperatura_alerta_celsius && !isnan(temperatura));
 }
 
