@@ -1,1 +1,5 @@
 .env
+/db
+/influxdb3_data
+/influxdb3_plugins
+/ssl
