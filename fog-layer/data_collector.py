@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 import asyncio
 import threading
+import time
 from dotenv import load_dotenv
 
 import paho.mqtt.client as paho
@@ -33,6 +34,7 @@ notification_engine = NotificationEngine()
 # Función para iniciar el servidor WebSocket en un hilo separado
 def start_websocket_server():
     """Inicia el servidor WebSocket en un hilo separado"""
+    time.sleep(2)  # Esperar a que todo esté inicializado
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -42,10 +44,11 @@ def start_websocket_server():
     except Exception as e:
         print(f"Error crítico en WebSocket server: {e}")
 
-# Validaciones rápidas previas al QC (las originales)
+# Validaciones rápidas previas al QC (CORREGIDAS para campos reales del ESP32)
 def validacion_rapida(datos):
     """Validaciones básicas de rangos lógicos antes del QC avanzado"""
-    temp = datos.get('temperatura_celsius', None)
+    # CORRECCIÓN: Usar los nombres reales que envía el ESP32
+    temp = datos.get('temperatura', None)  # Cambiado de 'temperatura_celsius'
     TEMP_MIN_LOGICO = -10.0
     TEMP_MAX_LOGICO = 60.0
 
@@ -54,34 +57,37 @@ def validacion_rapida(datos):
         print(f"Lectura de temperatura anomala detectada: {temp} C°.")
         return False, f"Temperatura fuera de rango lógico: {temp}°C"
 
-    # Validacion de humedad y luz no nulas
-    if datos.get('humedad_porcentaje', None) is None or datos.get('luz_adc', None) is None:
+    # CORRECCIÓN: Usar los nombres reales que envía el ESP32
+    if datos.get('humedad', None) is None or datos.get('luz_adc', None) is None:
         print("Lectura de datos incompleta. Revise los sensores.")
         return False, "Datos incompletos (humedad o luz nulos)"
 
     return True, "Validación rápida aprobada"
 
-# Aseguramiento de calidad de datos
+# Aseguramiento de calidad de datos CORREGIDO
 def aplicar_qc(datos):
     # Primero aplicar validación rápida
     valido_rapido, mensaje_rapido = validacion_rapida(datos)
     if not valido_rapido:
-        # Crear un resultado de QC que indica fallo en la validación rápida
+        # Crear resultado de QC consistente para validación rápida fallida
         resultado_fallo = {
             'todos_aprobados': False,
             'resultados': {
-                'temperatura': {'aprobado': False, 'razon': mensaje_rapido},
-                'humedad': {'aprobado': False, 'razon': mensaje_rapido},
-                'luz_adc': {'aprobado': False, 'razon': mensaje_rapido},
-                'distancia_cm': {'aprobado': False, 'razon': mensaje_rapido}
+                'validacion_rapida': {
+                    'aprobado': False,
+                    'razon': mensaje_rapido,
+                    'promedio': None,
+                    'desviacion': None,
+                    'z_score': None
+                }
             }
         }
         return resultado_fallo
     
-    # Si pasa validación rápida, aplicar QC avanzado
+    # CORRECCIÓN: Usar los nombres reales que envía el ESP32
     datos_para_qc = {
-        'temperatura': datos.get('temperatura_celsius'),
-        'humedad': datos.get('humedad_porcentaje'),
+        'temperatura': datos.get('temperatura'),        # Cambiado de 'temperatura_celsius'
+        'humedad': datos.get('humedad'),                # Cambiado de 'humedad_porcentaje'
         'luz_adc': datos.get('luz_adc'),
         'distancia_cm': datos.get('distancia_cm')
     }
@@ -137,21 +143,33 @@ def enviar_a_azure_iot_hub(datos):
 async def procesar_alertas(datos, resultado_qc):
     """Procesa las alertas de forma asíncrona"""
     try:
-        # CORRECCIÓN: Usar los mismos nombres que el ESP32 envía
+        # Usar los datos REALES del ESP32
         datos_alertas = {
-            'temperatura_celsius': datos.get('temperatura_celsius'),  # ✅ NOMBRE CORRECTO
-            'humedad_porcentaje': datos.get('humedad_porcentaje'),
+            'temperatura_celsius': datos.get('temperatura'),  # Mapear para alertas
+            'humedad_porcentaje': datos.get('humedad'),      # Mapear para alertas
             'luz_adc': datos.get('luz_adc'),
             'distancia_cm': datos.get('distancia_cm'),
-            # CORRECCIÓN: Lógica mejorada para detección de vehículos
-            'vehiculo_en_entrada_detectado': datos.get('distancia_cm', 100) is not None and datos.get('distancia_cm', 100) < 10.0
+            'vehiculo_en_entrada_detectado': datos.get('vehiculo_en_entrada_detectado', False),
+            'barrera_abierta': datos.get('barrera_abierta', False),
+            'luces_parking_encendidas': datos.get('luces_parking_encendidas', False),
+            'alarma_temperatura_activa': datos.get('alarma_temperatura_activa', False)
         }
+        
+        # Crear mensaje de QC para alertas
+        if not resultado_qc['todos_aprobados']:
+            qc_message = " | ".join([
+                f"{sensor}: {resultado['razon']}" 
+                for sensor, resultado in resultado_qc['resultados'].items() 
+                if not resultado.get('aprobado', True)
+            ])
+        else:
+            qc_message = "QC aprobado"
         
         # Evaluar alertas
         alertas = notification_engine.evaluar_alertas(
             datos_alertas, 
             qc_status=resultado_qc['todos_aprobados'],
-            qc_message=", ".join([f"{k}: {v['razon']}" for k, v in resultado_qc['resultados'].items() if not v['aprobado']])
+            qc_message=qc_message
         )
         
         # Enviar notificaciones
@@ -163,21 +181,28 @@ async def procesar_alertas(datos, resultado_qc):
 
 def on_message_local(client, userdata, msg):
     payload = msg.payload.decode('utf-8')
-    print(f"\n📥 Mensaje MQTT - Tópico: {msg.topic}")
-    print(f"📦 Payload: {payload}")
+    print(f"Mensaje MQTT - Tópico: {msg.topic}")
+    print(f"Payload: {payload}")
 
     try:
         datos_json = json.loads(payload)
-        print("✅ JSON decodificado correctamente")
+        print("JSON decodificado correctamente")
         
         # Aplicar control de calidad
         resultado_qc = aplicar_qc(datos_json)
-        print(f"🔍 Resultado QC: {'APROBADO' if resultado_qc['todos_aprobados'] else 'RECHAZADO'}")
         
-        # Mostrar detalles del QC
-        for sensor, resultado in resultado_qc['resultados'].items():
-            estado = "✅" if resultado['aprobado'] else "❌"
-            print(f"  {sensor}: {estado} - {resultado['razon']}")
+        # Mostrar resultado del QC
+        if 'validacion_rapida' in resultado_qc['resultados']:
+            # Caso: validación rápida fallida
+            print("Resultado QC: RECHAZADO")
+            resultado = resultado_qc['resultados']['validacion_rapida']
+            print(f"  validacion_rapida: {resultado['razon']}")
+        else:
+            # Caso: QC avanzado
+            print(f"Resultado QC: {'APROBADO' if resultado_qc['todos_aprobados'] else 'RECHAZADO'}")
+            for sensor, resultado in resultado_qc['resultados'].items():
+                estado = "OK" if resultado['aprobado'] else "FALLA"
+                print(f"  {sensor}: {estado} - {resultado['razon']}")
         
         if resultado_qc['todos_aprobados']:
             print("Control de calidad aprobado - enviando a Azure")
@@ -207,7 +232,7 @@ def iniciar_gateway_mqtt():
 
     try:
         local_mqtt_client.connect(LOCAL_MQTT_BROKER, LOCAL_MQTT_PORT, 60)
-        print("✅ Cliente MQTT configurado correctamente")
+        print("Cliente MQTT configurado correctamente")
     except Exception as e:
         print(f"Error al conectar al Broker local: {e}")
         return
@@ -217,12 +242,15 @@ def iniciar_gateway_mqtt():
     local_mqtt_client.loop_forever()
 
 if __name__ == "__main__":
-    print("🚀 Iniciando Gateway de TRANSWATCH...")
+    print("Iniciando Gateway de TRANSWATCH...")
     
     # Iniciar servidor WebSocket en un hilo separado
     websocket_thread = threading.Thread(target=start_websocket_server, daemon=True)
     websocket_thread.start()
-    print("🌐 Servidor WebSocket iniciado en segundo plano (puerto 8765)")
+    print("Servidor WebSocket iniciado en segundo plano (puerto 8765)")
+
+    # Pequeña pausa para asegurar que el WebSocket esté listo
+    time.sleep(3)
 
     # Iniciar gateway MQTT
     iniciar_gateway_mqtt()
