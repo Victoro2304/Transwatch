@@ -160,7 +160,7 @@ async def procesar_alertas(datos, resultado_qc):
                 print(f"Alerta disparada: {alerta['type']}")
                 await notification_engine.enviar_notificaciones(
                     alerta,
-                    alerta.get('channels', ['email', 'database'])
+                    alerta.get('channels', ['email', 'database', 'websocket'])
                 )
             else:
                 print(f"Error: formato de alerta inválido: {alerta}")

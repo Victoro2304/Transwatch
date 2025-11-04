@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transwatch - Monitor de Alertas</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f2f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .header {
+            background-color: #1a73e8;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        #notifications {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .notification {
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border-left: 4px solid;
+        }
+        .notification.info { 
+            background-color: #e8f0fe;
+            border-left-color: #1a73e8;
+        }
+        .notification.warning {
+            background-color: #fef6e8;
+            border-left-color: #f9ab00;
+        }
+        .notification.critical {
+            background-color: #fee8e8;
+            border-left-color: #d93025;
+        }
+        .notification-time {
+            color: #666;
+            font-size: 0.8em;
+            margin-bottom: 5px;
+        }
+        .connection-status {
+            padding: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .connected {
+            background-color: #e6f4ea;
+            color: #137333;
+        }
+        .disconnected {
+            background-color: #fce8e6;
+            color: #c5221f;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Transwatch - Monitor de Alertas</h1>
+        </div>
+        <div id="connection-status" class="connection-status disconnected">
+            Desconectado
+        </div>
+        <div id="notifications">
+            <h2>Notificaciones en tiempo real</h2>
+            <div id="notifications-list"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        const maxNotifications = 50; // Máximo número de notificaciones a mostrar
+
+        function conectarWebSocket() {
+            ws = new WebSocket('ws://localhost:8765');
+
+            ws.onopen = function() {
+                console.log('Conectado al servidor WebSocket');
+                document.getElementById('connection-status').className = 'connection-status connected';
+                document.getElementById('connection-status').textContent = 'Conectado';
+            };
+
+            ws.onclose = function() {
+                console.log('Desconectado del servidor WebSocket');
+                document.getElementById('connection-status').className = 'connection-status disconnected';
+                document.getElementById('connection-status').textContent = 'Desconectado - Intentando reconectar...';
+                
+                // Intentar reconectar después de 5 segundos
+                setTimeout(conectarWebSocket, 5000);
+            };
+
+            ws.onerror = function(error) {
+                console.error('Error en WebSocket:', error);
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    console.log('Mensaje WebSocket recibido:', event.data);
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'alert') {
+                        console.log('Alerta recibida:', data.data);
+                        mostrarNotificacion(data.data);
+                    } else if (data.type === 'status') {
+                        console.log('Estado recibido:', data.message);
+                    }
+                } catch (error) {
+                    console.error('Error al procesar mensaje:', error, event.data);
+                }
+            };
+        }
+
+        function mostrarNotificacion(alerta) {
+            const notificationsList = document.getElementById('notifications-list');
+            const notificationDiv = document.createElement('div');
+            
+            // Determinar la clase de prioridad
+            let prioridadClase = 'info';
+            if (alerta.priority === 'high') prioridadClase = 'warning';
+            if (alerta.priority === 'critical') prioridadClase = 'critical';
+            
+            notificationDiv.className = `notification ${prioridadClase}`;
+            
+            // Agregar timestamp
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'notification-time';
+            timeDiv.textContent = new Date().toLocaleString();
+            
+            // Agregar mensaje
+            const messageDiv = document.createElement('div');
+            messageDiv.textContent = alerta.message;
+            
+            notificationDiv.appendChild(timeDiv);
+            notificationDiv.appendChild(messageDiv);
+            
+            // Insertar al principio de la lista
+            notificationsList.insertBefore(notificationDiv, notificationsList.firstChild);
+            
+            // Limitar el número de notificaciones mostradas
+            while (notificationsList.children.length > maxNotifications) {
+                notificationsList.removeChild(notificationsList.lastChild);
+            }
+        }
+
+        // Iniciar conexión cuando la página cargue
+        window.addEventListener('load', conectarWebSocket);
+    </script>
+</body>
+</html>

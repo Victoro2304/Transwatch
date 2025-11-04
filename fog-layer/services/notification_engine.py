@@ -2,6 +2,7 @@ import os
 import json
 import smtplib
 import asyncio
+import traceback
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -23,12 +24,15 @@ class NotificationEngine:
         try:
             self.websocket_server = await websockets.serve(
                 self.handle_websocket_connection,
-                "localhost",
+                "0.0.0.0",  # Permitir conexiones desde cualquier IP
                 8765
             )
-            print("Servidor WebSocket iniciado en ws://localhost:8765")
+            print("Servidor WebSocket iniciado en ws://0.0.0.0:8765")
+            await self.websocket_server.wait_closed()
         except Exception as e:
             print(f"Error iniciando servidor WebSocket: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _almacenar_alerta_bd(self, alerta):
         """Almacena una alerta en la base de datos usando TimeSeriesManager"""
@@ -45,7 +49,7 @@ class NotificationEngine:
         except Exception as e:
             print(f"Error almacenando alerta en BD: {e}")
 
-    async def handle_websocket_connection(self, websocket, path):
+    async def handle_websocket_connection(self, websocket):
         """Maneja conexiones WebSocket"""
         try:
             self.websocket_clients.add(websocket)
@@ -53,13 +57,20 @@ class NotificationEngine:
             
             try:
                 async for message in websocket:
-                    # Mantener conexión activa
-                    pass
+                    # Enviar un mensaje de confirmación al cliente
+                    await websocket.send(json.dumps({
+                        "type": "status",
+                        "message": "connected"
+                    }))
+            except websockets.exceptions.ConnectionClosed:
+                pass
             finally:
                 self.websocket_clients.remove(websocket)
                 print(f"Cliente WebSocket desconectado. Total clientes: {len(self.websocket_clients)}")
         except Exception as e:
             print(f"Error en conexión WebSocket: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _cargar_reglas_alertas(self):
         """Define las reglas para generar alertas"""
@@ -177,14 +188,34 @@ class NotificationEngine:
                 "type": "alert",
                 "data": alerta
             })
+            print(f"Enviando mensaje WebSocket: {mensaje}")
             
-            websockets_activos = list(self.websocket_clients)
-            await asyncio.gather(
-                *[cliente.send(mensaje) for cliente in websockets_activos],
-                return_exceptions=True
-            )
+            clientes_desconectados = []
+            for cliente in self.websocket_clients:
+                try:
+                    print(f"Intentando enviar mensaje a cliente WebSocket...")
+                    await cliente.send(mensaje)
+                    print("Mensaje enviado exitosamente")
+                except websockets.exceptions.ConnectionClosed:
+                    print("Cliente WebSocket desconectado durante el envío")
+                    clientes_desconectados.append(cliente)
+                except Exception as e:
+                    print(f"Error enviando mensaje a cliente: {e}")
+                    traceback.print_exc()
+                    clientes_desconectados.append(cliente)
+            
+            # Eliminar clientes desconectados
+            for cliente in clientes_desconectados:
+                self.websocket_clients.remove(cliente)
+                
+            if clientes_desconectados:
+                print(f"Se eliminaron {len(clientes_desconectados)} clientes desconectados. Clientes activos: {len(self.websocket_clients)}")
+            else:
+                print(f"Mensaje enviado a todos los clientes. Clientes activos: {len(self.websocket_clients)}")
+                
         except Exception as e:
             print(f"Error enviando por WebSocket: {e}")
+            traceback.print_exc()
 
     async def enviar_notificaciones(self, alerta, canales):
         """Envía notificaciones por los canales especificados"""
@@ -194,13 +225,11 @@ class NotificationEngine:
 
             print(f"Procesando alerta: {alerta['type']}")
             
+            tareas = []
+            
             if 'email' in canales:
                 print("Enviando notificación por email...")
-                try:
-                    await self._enviar_email(alerta)
-                except Exception as e:
-                    print(f"Error enviando email: {e}")
-                    traceback.print_exc()
+                tareas.append(self._enviar_email(alerta))
                 
             if 'database' in canales:
                 print("Almacenando alerta en base de datos...")
@@ -208,6 +237,14 @@ class NotificationEngine:
                     self._almacenar_alerta_bd(alerta)
                 except Exception as e:
                     print(f"Error almacenando en BD: {e}")
+                    
+            if 'websocket' in canales:
+                print("Enviando notificación por WebSocket...")
+                tareas.append(self._enviar_websocket(alerta))
+            
+            # Ejecutar tareas asíncronas en paralelo
+            if tareas:
+                await asyncio.gather(*tareas, return_exceptions=True)
                 
         except Exception as e:
             print(f"Error en enviar_notificaciones: {e}")
