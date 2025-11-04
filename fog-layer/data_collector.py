@@ -83,8 +83,8 @@ def aplicar_qc(datos):
     return resultado_fallo
   
   datos_para_qc = {
-    'temperatura_celsius': datos.get('temperatura_celsius'),
-    'humedad_porcentaje': datos.get('humedad_porcentaje'),
+    'temperatura': datos.get('temperatura_celsius'),
+    'humedad': datos.get('humedad_porcentaje'),
     'luz_adc': datos.get('luz_adc'),
     'distancia_cm': datos.get('distancia_cm')
   }

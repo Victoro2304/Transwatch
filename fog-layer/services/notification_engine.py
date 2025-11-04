@@ -97,7 +97,7 @@ class NotificationEngine:
                 "condition": lambda data: data.get("qc_approved", True) is False,
                 "message": lambda data: f"Fallo en sensor: {data.get('qc_message', 'Desconocido')}",
                 "priority": "medium",
-                "channels": ["database", "email"]
+                "channels": ["websocket","database", "email"]
             }
         }
 
