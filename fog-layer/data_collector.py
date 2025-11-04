@@ -1,6 +1,5 @@
 import socket
 import json
-import mysql.connector
 from datetime import datetime
 import os
 import asyncio
@@ -138,50 +137,37 @@ def enviar_a_azure_iot_hub(datos):
     except Exception as e:
         print(f"Error al mandar mensaje a la nube de Azure: {e}")
 
-def procesar_alertas_sync(datos, resultado_qc):
-  """Procesa las alertas de forma síncrona (ejecuta asyncio internamente)"""
-  try:
-    datos_alertas = {
-      'temperatura_celsius': datos.get('temperatura_celsius'),
-      'humedad_porcentaje': datos.get('humedad_porcentaje'),
-      'luz_adc': datos.get('luz_adc'),
-      'distancia_cm': datos.get('distancia_cm'),
-      'vehiculo_en_entrada_detectado': datos.get('vehiculo_en_entrada_detectado', False),
-      'barrera_abierta': datos.get('barrera_abierta', False),
-      'luces_parking_encendidas': datos.get('luces_parking_encendidas', False),
-      'alarma_temperatura_activa': datos.get('alarma_temperatura_activa', False)
-    }
-    
-    if not resultado_qc['todos_aprobados']:
-        qc_message = " | ".join([
-        f"{sensor}: {resultado['razon']}" 
-        for sensor, resultado in resultado_qc['resultados'].items() 
-        if not resultado.get('aprobado', True)
-      ])
-    else:
-      qc_message = "QC aprobado"
-    
-    # Evaluar alertas (síncrono)
-    alertas = notification_engine.evaluar_alertas(
-      datos_alertas, 
-      qc_status=resultado_qc['todos_aprobados'],
-      qc_message=qc_message
-    )
-    
-    # Enviar notificaciones usando un nuevo event loop
-    if alertas:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            for alerta_info in alertas:
-                loop.run_until_complete(
-                    notification_engine.enviar_notificaciones(alerta_info['alerta'], alerta_info['canales'])
+async def procesar_alertas(datos, resultado_qc):
+    """Procesa las alertas de forma asíncrona"""
+    try:
+        datos_alertas = {
+            'temperatura_celsius': datos.get('temperatura_celsius'),
+            'humedad_porcentaje': datos.get('humedad_porcentaje'),
+            'luz_adc': datos.get('luz_adc'),
+            'distancia_cm': datos.get('distancia_cm'),
+            'vehiculo_en_entrada_detectado': datos.get('vehiculo_en_entrada_detectado', False),
+            'barrera_abierta': datos.get('barrera_abierta', False),
+            'luces_parking_encendidas': datos.get('luces_parking_encendidas', False),
+            'alarma_temperatura_activa': datos.get('alarma_temperatura_activa', False)
+        }
+
+        # Evaluar alertas - solo obtener las alertas activas
+        alertas = notification_engine.evaluar_alertas(datos_alertas, resultado_qc['todos_aprobados'])
+        
+        # Procesar cada alerta individualmente
+        for alerta in alertas:
+            if isinstance(alerta, dict) and 'type' in alerta:
+                print(f"Alerta disparada: {alerta['type']}")
+                await notification_engine.enviar_notificaciones(
+                    alerta,
+                    alerta.get('channels', ['email', 'database'])
                 )
-        finally:
-            loop.close()
-      
-  except Exception as e:
-    print(f"Error procesando alertas: {e}")
+            else:
+                print(f"Error: formato de alerta inválido: {alerta}")
+    except Exception as e:
+        print(f"Error procesando alertas: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
 def on_message_local(client, userdata, msg):
     payload = msg.payload.decode('utf-8')
@@ -220,8 +206,8 @@ def on_message_local(client, userdata, msg):
         else:
             print("Mensaje descartado por problemas de QC.")
         
-        # Procesar alertas (ahora usando función síncrona)
-        procesar_alertas_sync(datos_json, resultado_qc)
+        # Procesar alertas en un nuevo event loop
+        asyncio.run(procesar_alertas(datos_json, resultado_qc))
         
     except json.JSONDecodeError as e:
         print(f"Error al decodificar el JSON recibido: {e}")
@@ -243,17 +229,17 @@ def iniciar_gateway_mqtt():
     try:
         local_mqtt_client.connect(LOCAL_MQTT_BROKER, LOCAL_MQTT_PORT, 60)
         print("Cliente MQTT configurado correctamente")
+        
+        # Iniciar loop MQTT
+        print("Iniciando loop MQTT...")
+        local_mqtt_client.loop_start()  # Cambiar loop_forever() por loop_start()
     except Exception as e:
         print(f"Error al conectar al Broker local: {e}")
         return
-    
-    # Iniciar loop MQTT
-    print("Iniciando loop MQTT...")
-    local_mqtt_client.loop_forever()
 
 if __name__ == "__main__":
     print("Iniciando Gateway de TRANSWATCH...")
-    
+
     # Iniciar servidor WebSocket en un hilo separado
     websocket_thread = threading.Thread(target=start_websocket_server, daemon=True)
     websocket_thread.start()
@@ -264,3 +250,13 @@ if __name__ == "__main__":
 
     # Iniciar gateway MQTT
     iniciar_gateway_mqtt()
+    
+    # Mantener el programa principal ejecutándose
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nDeteniendo el gateway...")
+        if local_mqtt_client:
+            local_mqtt_client.loop_stop()
+            local_mqtt_client.disconnect()
