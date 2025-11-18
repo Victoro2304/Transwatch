@@ -203,6 +203,8 @@ def on_message_local(client, userdata, msg):
                 device_id="ESP32-Parking-Transwatch",
                 qc_status="Clean"
             )
+            print("Enviando telemetría en tiempo real a WebSockets...")
+            asyncio.run(notification_engine.broadcast_telemetry(datos_json))
         else:
             print("Mensaje descartado por problemas de QC.")
         

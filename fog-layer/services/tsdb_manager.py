@@ -3,6 +3,7 @@ import os
 import time
 from influxdb_client_3 import InfluxDBClient3
 from dotenv import load_dotenv
+import pandas as pd
 
 # Cargar variables de entorno desde .env
 load_dotenv()
@@ -70,6 +71,48 @@ class TimeSeriesManager:
         except Exception as e:
             print(f"Error almacenando en InfluxDB: {e}")
             return False
+        
+    def consultar_historico_temperatura(self, limite=30):
+        """
+        Consulta los últimos 'limite' puntos de temperatura de InfluxDB
+        y los devuelve en el formato {x, y} que espera Chart.js.
+        """
+        if not self.client:
+            print("Cliente InfluxDB no inicializado.")
+            return []
+
+        try:
+            print("Ejecutando consulta de historial (filtrando ceros)...")
+            query = f"""
+                SELECT "time", "temp_celsius" 
+                FROM "sensor_reading"
+                WHERE "temp_celsius" IS NOT NULL AND "temp_celsius" > 0.1
+                ORDER BY time DESC
+                LIMIT {limite}
+            """
+            
+            pyarrow_table = self.client.query(query=query)
+            df = pyarrow_table.to_pandas()
+
+            if df.empty:
+                print("No se encontraron datos históricos válidos (mayores a 0).")
+                return []
+
+            print("Datos convertidos. Procesando...")
+
+            df = df.rename(columns={"temp_celsius": "y"}) 
+            
+            df['x'] = (df['time'].astype(int) / 1_000_000).astype(int)
+            
+            records = df[['x', 'y']].to_dict('records')
+            
+            return records[::-1]
+
+        except Exception as e:
+            print(f"Error consultando histórico de InfluxDB: {e}")
+            import traceback 
+            traceback.print_exc() 
+            return []
 
     def close(self):
         """Cierra el cliente de InfluxDB."""

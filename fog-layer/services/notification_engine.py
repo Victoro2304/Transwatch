@@ -9,6 +9,7 @@ from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 import websockets
 from services.tsdb_manager import TimeSeriesManager
+import time
 
 # Cargar variables de entorno
 load_dotenv()
@@ -55,13 +56,23 @@ class NotificationEngine:
             self.websocket_clients.add(websocket)
             print(f"Nueva conexión WebSocket establecida. Total clientes: {len(self.websocket_clients)}")
             
+            print("Cliente conectado. Enviando datos históricos...")
+            try:
+                tsdb = TimeSeriesManager()
+                historico = tsdb.consultar_historico_temperatura(limite=50)
+                tsdb.close()
+                
+                if historico:
+                    await websocket.send(json.dumps(historico))
+                    print(f"Enviados {len(historico)} puntos históricos al nuevo cliente.")
+                else:
+                    print("No se encontró historial o hubo un error al consultar.")
+            except Exception as e:
+                print(f"Error al enviar datos históricos: {e}")
+
             try:
                 async for message in websocket:
-                    # Enviar un mensaje de confirmación al cliente
-                    await websocket.send(json.dumps({
-                        "type": "status",
-                        "message": "connected"
-                    }))
+                    await websocket.send(json.dumps({"type": "status", "message": "connected"}))
             except websockets.exceptions.ConnectionClosed:
                 pass
             finally:
@@ -217,6 +228,39 @@ class NotificationEngine:
             print(f"Error enviando por WebSocket: {e}")
             traceback.print_exc()
 
+    async def broadcast_telemetry(self, datos_json):
+        """
+        Envía un solo punto de telemetría (formato de la práctica) 
+        a todos los clientes WebSocket conectados.
+        """
+        if not self.websocket_clients:
+            return
+
+        try:
+            formatted_data = {
+                "x": int(time.time() * 1000),
+                "y": datos_json.get("temperatura_celsius")
+            }
+
+            if formatted_data["temp"] is None:
+                return
+
+            message = json.dumps(formatted_data)
+
+            for cliente in list(self.websocket_clients):
+                try:
+                    await cliente.send(message)
+                except websockets.exceptions.ConnectionClosed:
+                    print("Cliente desconectado durante broadcast, removido.")
+                    self.websocket_clients.remove(cliente)
+                except Exception as e:
+                    print(f"Error en broadcast de telemetría: {e}")
+                    if cliente in self.websocket_clients:
+                         self.websocket_clients.remove(cliente)
+
+        except Exception as e:
+            print(f"Error preparando broadcast de telemetría: {e}")
+    
     async def enviar_notificaciones(self, alerta, canales):
         """Envía notificaciones por los canales especificados"""
         try:
