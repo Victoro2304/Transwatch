@@ -120,6 +120,27 @@ class TimeSeriesManager:
             self.client.close()
             print("Cliente InfluxDB cerrado.")
 
+    def consultar_conteo_vehiculos_por_hora(self):
+        """KPI para el Administrador: Cuenta vehículos por hora"""
+        if not self.client: return []
+        
+        query = """
+            SELECT date_bin(INTERVAL '1 hour', time) as hora, count(vehiculo_en_entrada_detectado) as total
+            FROM "sensor_reading"
+            WHERE vehiculo_en_entrada_detectado = true
+            GROUP BY hora
+            ORDER BY hora DESC
+            LIMIT 24
+        """
+        try:
+            table = self.client.query(query=query)
+            df = table.to_pandas()
+            # Convertir a formato JSON
+            return df.to_dict('records')
+        except Exception as e:
+            print(f"Error consultando KPIs: {e}")
+            return []
+
 # Bloque para probar la clase individualmente
 if __name__ == "__main__":
     print("Probando TimeSeriesManager...")

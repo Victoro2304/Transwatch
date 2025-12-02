@@ -1,1 +1,0 @@
-const aqui = 'aqui va ir la app de cliente';

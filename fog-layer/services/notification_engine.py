@@ -229,37 +229,15 @@ class NotificationEngine:
             traceback.print_exc()
 
     async def broadcast_telemetry(self, datos_json):
-        """
-        Envía un solo punto de telemetría (formato de la práctica) 
-        a todos los clientes WebSocket conectados.
-        """
         if not self.websocket_clients:
             return
-
         try:
-            formatted_data = {
-                "x": int(time.time() * 1000),
-                "y": datos_json.get("temperatura_celsius")
-            }
-
-            if formatted_data["temp"] is None:
-                return
-
-            message = json.dumps(formatted_data)
-
+            message = json.dumps(datos_json) 
+            
             for cliente in list(self.websocket_clients):
-                try:
-                    await cliente.send(message)
-                except websockets.exceptions.ConnectionClosed:
-                    print("Cliente desconectado durante broadcast, removido.")
-                    self.websocket_clients.remove(cliente)
-                except Exception as e:
-                    print(f"Error en broadcast de telemetría: {e}")
-                    if cliente in self.websocket_clients:
-                         self.websocket_clients.remove(cliente)
-
+                await cliente.send(message)
         except Exception as e:
-            print(f"Error preparando broadcast de telemetría: {e}")
+            print(f"Error broadcast: {e}")
     
     async def enviar_notificaciones(self, alerta, canales):
         """Envía notificaciones por los canales especificados"""
