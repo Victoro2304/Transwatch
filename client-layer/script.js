@@ -62,9 +62,12 @@ function switchTab(tabId) {
     document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
     document.getElementById(tabId).classList.add('active');
     
-    // Activar botón correspondiente
-    const btnIndex = ['operator', 'admin', 'tech'].indexOf(tabId);
-    document.querySelectorAll('.nav-btn')[btnIndex].classList.add('active');
+    const btnIndex = ['operator', 'admin', 'tech', 'ai_analytics'].indexOf(tabId);
+    
+    // Agregamos seguridad por si acaso
+    if(btnIndex >= 0) {
+        document.querySelectorAll('.nav-btn')[btnIndex].classList.add('active');
+    }
 }
 
 // --- LÓGICA DE WEBSOCKET ---
