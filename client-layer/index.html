@@ -30,6 +30,7 @@
         <button class="nav-btn active" onclick="switchTab('operator')"><i class="fas fa-user-shield"></i> Operador</button>
         <button class="nav-btn" onclick="switchTab('admin')"><i class="fas fa-chart-line"></i> Administrador</button>
         <button class="nav-btn" onclick="switchTab('tech')"><i class="fas fa-tools"></i> Técnico</button>
+        <button class="nav-btn" onclick="switchTab('ai_analytics')"><i class="fas fa-brain"></i> Análisis IA</button>
     </div>
 
     <div id="operator" class="view-section active">
@@ -134,6 +135,47 @@
         </div>
     </div>
 </div>
+
+<!-- SECCIÓN NUEVA: INTELIGENCIA ARTIFICIAL -->
+    <div id="ai_analytics" class="view-section">
+        <div class="card" style="margin-bottom: 20px;">
+            <h3><i class="fas fa-robot"></i> Configuración de Análisis (Fog Computing)</h3>
+            <div style="display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap;">
+                <div>
+                    <label style="font-weight: bold; font-size: 0.9em;">Fecha Inicio:</label><br>
+                    <input type="datetime-local" id="ai-start-date" style="padding: 8px; border: 1px solid #ccc; border-radius: 5px;">
+                </div>
+                <div>
+                    <label style="font-weight: bold; font-size: 0.9em;">Fecha Fin:</label><br>
+                    <input type="datetime-local" id="ai-end-date" style="padding: 8px; border: 1px solid #ccc; border-radius: 5px;">
+                </div>
+                <div>
+                    <label style="font-weight: bold; font-size: 0.9em;">Grupos (Clusters):</label><br>
+                    <input type="number" id="ai-clusters" value="3" min="2" max="5" style="padding: 8px; width: 60px; border: 1px solid #ccc; border-radius: 5px;">
+                </div>
+                <button onclick="requestAnalysis()" class="nav-btn" style="background: #8e44ad; color: white; border: none;">
+                    <i class="fas fa-play"></i> Ejecutar Análisis
+                </button>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <h3>CLUSTERING (K-Means)</h3>
+                <p style="font-size: 0.8em; color: #666;">Agrupación automática por patrones de Temp vs Humedad.</p>
+                <div style="height: 350px;">
+                    <canvas id="clusterChart"></canvas>
+                </div>
+            </div>
+            <div class="card">
+                <h3>INFERENCIA (Regresión Lineal)</h3>
+                <p style="font-size: 0.8em; color: #666;">Predicción de tendencia de temperatura a futuro.</p>
+                <div style="height: 350px;">
+                    <canvas id="inferenceChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
 
 <script src="script.js"></script>
 </body>
