@@ -163,3 +163,38 @@ if __name__ == "__main__":
         manager.close()
     else:
         print("No se pudo inicializar el cliente, revisa tu .env y conexión.")
+
+    def consultar_rango_fechas(self, fecha_inicio, fecha_fin):
+        """
+        Consulta datos para Clustering e Inferencia dentro de un rango.
+        Recibe fechas en formato string (ISO).
+        """
+        if not self.client:
+            print("Cliente DB no conectado.")
+            return []
+        
+        # Filtrar por fecha y temp
+        query = f"""
+            SELECT "time", "temp_celsius", "humedad_porcentaje"
+            FROM "sensor_reading"
+            WHERE time >= '{fecha_inicio}' AND time <= '{fecha_fin}'
+            AND "temp_celsius" > 0
+            ORDER BY time ASC
+        """
+        try:
+            print(f"Consultando rango: {fecha_inicio} a {fecha_fin}")
+            table = self.client.query(query=query)
+            df = table.to_pandas()
+            
+            if df.empty:
+                print("No se encontraron datos en ese rango.")
+                return []
+            
+            # Convertir timestamp a string para enviarlo al frontend
+            df['time'] = df['time'].astype(str)
+            
+            return df.to_dict('records')
+            
+        except Exception as e:
+            print(f"Error consultando rango de fechas: {e}")
+            return []
