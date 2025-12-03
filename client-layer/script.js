@@ -1,6 +1,8 @@
 // --- VARIABLES DE ESTADO ---
 let ws = null;
 let chart = null;
+let clusterChart = null;
+let inferenceChart = null;
 
 // Contadores para KPIs
 let stats = {
@@ -81,17 +83,45 @@ function connectWS() {
         setTimeout(connectWS, 3000);
     };
 
+    // ws.onmessage = (event) => {
+    //     try {
+    //         const payload = JSON.parse(event.data);
+
+    //         // Manejar Alertas
+    //         if (payload.type === 'alert') {
+    //             renderAlert(payload.data);
+    //         } 
+    //         // Manejar Telemetría (JSON completo)
+    //         else if (payload.temperatura_celsius !== undefined) {
+    //             processTelemetry(payload);
+    //         }
+    //         // ... código existente ...
+    //         else if (payload.temperatura_celsius !== undefined) {
+    //             processTelemetry(payload);
+    //         }
+            
+    //         else if (payload.type === 'analysis_result') {
+    //             renderMLCharts(payload.data);
+    //         }
+    //     } catch (e) {
+    //         console.error("Error parseando mensaje:", e);
+    //     }
+    // };
     ws.onmessage = (event) => {
         try {
             const payload = JSON.parse(event.data);
 
-            // Manejar Alertas
+            // 1. Manejar Alertas
             if (payload.type === 'alert') {
                 renderAlert(payload.data);
             } 
-            // Manejar Telemetría (JSON completo)
+            // 2. Manejar Telemetría (JSON completo)
             else if (payload.temperatura_celsius !== undefined) {
                 processTelemetry(payload);
+            }
+            // 3. Manejar Resultados de Inteligencia Artificial (NUEVO)
+            else if (payload.type === 'analysis_result') {
+                renderMLCharts(payload.data);
             }
         } catch (e) {
             console.error("Error parseando mensaje:", e);
@@ -250,3 +280,145 @@ window.addEventListener('load', () => {
     initChart();
     connectWS();
 });
+
+// --- FUNCIONES DE INTELIGENCIA ARTIFICIAL ---
+
+function requestAnalysis() {
+    const start = document.getElementById('ai-start-date').value;
+    const end = document.getElementById('ai-end-date').value;
+    const clusters = document.getElementById('ai-clusters').value;
+
+    if(!start || !end) {
+        alert("Por favor selecciona un rango de fechas válido.");
+        return;
+    }
+
+    // Convertir fechas al formato ISO que espera el backend
+    // Agregamos segundos para completar el formato
+    const payload = {
+        type: "request_analysis",
+        start_date: new Date(start).toISOString(),
+        end_date: new Date(end).toISOString(),
+        n_clusters: clusters
+    };
+    
+    if(ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(payload));
+        console.log("Petición de análisis enviada al Fog Layer...");
+    } else {
+        alert("Error: No hay conexión con el servidor (WebSocket desconectado).");
+    }
+}
+
+function renderMLCharts(data) {
+    if(data.error) { 
+        alert("Error del servidor: " + data.error); 
+        return; 
+    }
+    
+    const records = data.datos_analizados;
+    const predicciones = data.prediccion_futura;
+
+    // --- 1. GRÁFICO CLUSTERING (Scatter Plot) ---
+    const ctxCluster = document.getElementById('clusterChart').getContext('2d');
+    
+    // Preparar colores para los grupos
+    const colors = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6'];
+    const datasets = [];
+    
+    // Identificar cuántos grupos únicos devolvió el algoritmo
+    const uniqueClusters = [...new Set(records.map(r => r.cluster))];
+    
+    uniqueClusters.forEach((cId, index) => {
+        // Filtramos los puntos que pertenecen a este grupo
+        const clusterPoints = records
+            .filter(r => r.cluster === cId)
+            .map(r => ({ x: r.temp_celsius, y: r.humedad_porcentaje }));
+            
+        datasets.push({
+            label: `Grupo ${cId + 1}`,
+            data: clusterPoints,
+            backgroundColor: colors[index % colors.length],
+            pointRadius: 5,
+            type: 'scatter'
+        });
+    });
+
+    if(clusterChart) clusterChart.destroy();
+    clusterChart = new Chart(ctxCluster, {
+        data: { datasets: datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { title: {display: true, text: 'Temperatura (°C)'}, type: 'linear', position: 'bottom' },
+                y: { title: {display: true, text: 'Humedad (%)'} }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `T: ${context.parsed.x}°C, H: ${context.parsed.y}%`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // --- 2. GRÁFICO INFERENCIA (Línea de Predicción) ---
+    const ctxInf = document.getElementById('inferenceChart').getContext('2d');
+    
+    // Datos Reales (Histórico)
+    const datosReales = records.map(r => r.temp_celsius);
+    const labels = records.map((r, i) => `T-${i}`); // Etiquetas simples de tiempo
+
+    // Datos Futuros (Predicción)
+    // Rellenamos con 'null' la parte histórica para que la línea naranja empiece al final
+    const datosPrediccion = Array(labels.length).fill(null);
+    const labelsExtendidos = [...labels];
+    
+    // Conectar el último punto real con la primera predicción visualmente
+    datosPrediccion[labels.length - 1] = datosReales[datosReales.length - 1];
+
+    predicciones.forEach((valor, i) => {
+        labelsExtendidos.push(`Futuro +${i+1}`);
+        datosPrediccion.push(valor);
+    });
+
+    if(inferenceChart) inferenceChart.destroy();
+    inferenceChart = new Chart(ctxInf, {
+        type: 'line',
+        data: {
+            labels: labelsExtendidos,
+            datasets: [
+                {
+                    label: 'Histórico Real',
+                    data: datosReales,
+                    borderColor: '#34495e',
+                    backgroundColor: 'rgba(52, 73, 94, 0.2)',
+                    tension: 0.3,
+                    fill: true
+                },
+                {
+                    label: 'Predicción AI',
+                    data: datosPrediccion,
+                    borderColor: '#e67e22',
+                    borderDash: [5, 5], // Línea punteada
+                    pointBackgroundColor: '#e67e22',
+                    tension: 0.1,
+                    fill: false
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { title: {display: true, text: 'Temperatura (°C)'} }
+            }
+        }
+    });
+    
+    alert("Análisis completado. Revisa las gráficas.");
+}
