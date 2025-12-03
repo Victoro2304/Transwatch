@@ -7,6 +7,7 @@ from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
+from services.ml_engine import MachineLearningEngine
 import websockets
 from services.tsdb_manager import TimeSeriesManager
 import time
@@ -49,16 +50,19 @@ class NotificationEngine:
             print("Alerta almacenada en BD exitosamente")
         except Exception as e:
             print(f"Error almacenando alerta en BD: {e}")
+            
 
     async def handle_websocket_connection(self, websocket):
-        """Maneja conexiones WebSocket"""
+        """Maneja conexiones WebSocket e interacciones de IA"""
         try:
             self.websocket_clients.add(websocket)
             print(f"Nueva conexión WebSocket establecida. Total clientes: {len(self.websocket_clients)}")
             
-            print("Cliente conectado. Enviando datos históricos...")
+            # --- 1. ENVÍO DE DATOS HISTÓRICOS INICIALES ---
+            print("Cliente conectado. Enviando datos históricos recientes...")
             try:
                 tsdb = TimeSeriesManager()
+                # Mantenemos esto para que la gráfica principal no empiece vacía
                 historico = tsdb.consultar_historico_temperatura(limite=50)
                 tsdb.close()
                 
@@ -66,22 +70,94 @@ class NotificationEngine:
                     await websocket.send(json.dumps(historico))
                     print(f"Enviados {len(historico)} puntos históricos al nuevo cliente.")
                 else:
-                    print("No se encontró historial o hubo un error al consultar.")
+                    print("No se encontró historial reciente.")
             except Exception as e:
                 print(f"Error al enviar datos históricos: {e}")
 
+            # --- 2. BUCLE PRINCIPAL DE MENSAJES ---
             try:
                 async for message in websocket:
-                    await websocket.send(json.dumps({"type": "status", "message": "connected"}))
+                    try:
+                        data = json.loads(message)
+
+                        # A) Check de conexión (Ping/Pong)
+                        if data.get("type") == "status":
+                            await websocket.send(json.dumps({"type": "status", "message": "connected"}))
+
+                        # B) LÓGICA DE IA: SOLICITUD DE ANÁLISIS
+                        elif data.get('type') == 'request_analysis':
+                            print("Solicitud de análisis IA recibida...")
+                            
+                            # 1. Obtener parámetros desde el Frontend
+                            start = data.get('start_date')
+                            end = data.get('end_date')
+                            n_clusters = int(data.get('n_clusters', 3))
+                            
+                            # 2. Consultar Base de Datos (Usando la nueva función de rangos)
+                            tsdb = TimeSeriesManager()
+                            historico = tsdb.consultar_rango_fechas(start, end)
+                            tsdb.close()
+                            
+                            # 3. Ejecutar el Motor de IA (Clustering + Inferencia)
+                            ml_engine = MachineLearningEngine()
+                            resultado = ml_engine.procesar_datos(historico, n_clusters)
+                            
+                            # 4. Enviar resultados de vuelta al cliente
+                            response = {
+                                "type": "analysis_result",
+                                "data": resultado
+                            }
+                            await websocket.send(json.dumps(response))
+                            print("Resultados de IA enviados al cliente correctamente.")
+
+                    except json.JSONDecodeError:
+                        print("Mensaje no JSON recibido")
+                    except Exception as e:
+                        print(f"Error procesando mensaje: {e}")
+                        traceback.print_exc()
+
             except websockets.exceptions.ConnectionClosed:
                 pass
             finally:
                 self.websocket_clients.remove(websocket)
                 print(f"Cliente WebSocket desconectado. Total clientes: {len(self.websocket_clients)}")
         except Exception as e:
-            print(f"Error en conexión WebSocket: {e}")
+            print(f"Error crítico en conexión WebSocket: {e}")
             import traceback
             traceback.print_exc()
+
+    # async def handle_websocket_connection(self, websocket):
+    #     """Maneja conexiones WebSocket"""
+    #     try:
+    #         self.websocket_clients.add(websocket)
+    #         print(f"Nueva conexión WebSocket establecida. Total clientes: {len(self.websocket_clients)}")
+            
+    #         print("Cliente conectado. Enviando datos históricos...")
+    #         try:
+    #             tsdb = TimeSeriesManager()
+    #             historico = tsdb.consultar_historico_temperatura(limite=50)
+    #             tsdb.close()
+                
+    #             if historico:
+    #                 await websocket.send(json.dumps(historico))
+    #                 print(f"Enviados {len(historico)} puntos históricos al nuevo cliente.")
+    #             else:
+    #                 print("No se encontró historial o hubo un error al consultar.")
+    #         except Exception as e:
+    #             print(f"Error al enviar datos históricos: {e}")
+
+    #         try:
+    #             async for message in websocket:
+    #                 await websocket.send(json.dumps({"type": "status", "message": "connected"}))
+    #         except websockets.exceptions.ConnectionClosed:
+    #             pass
+    #         finally:
+    #             self.websocket_clients.remove(websocket)
+    #             print(f"Cliente WebSocket desconectado. Total clientes: {len(self.websocket_clients)}")
+    #     except Exception as e:
+    #         print(f"Error en conexión WebSocket: {e}")
+    #         import traceback
+    #         traceback.print_exc()
 
     def _cargar_reglas_alertas(self):
         """Define las reglas para generar alertas"""
