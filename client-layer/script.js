@@ -50,8 +50,8 @@ function initChart() {
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             scales: {
-                y: { type: 'linear', display: true, position: 'left', title: {display: true, text: 'Temp (°C)'} },
-                y1: { type: 'linear', display: true, position: 'right', grid: {drawOnChartArea: false}, title: {display: true, text: 'Humedad (%)'} }
+                y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Temp (°C)' } },
+                y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Humedad (%)' } }
             }
         }
     });
@@ -61,11 +61,11 @@ function switchTab(tabId) {
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
     document.getElementById(tabId).classList.add('active');
-    
+
     const btnIndex = ['operator', 'admin', 'tech', 'ai_analytics'].indexOf(tabId);
-    
+
     // Agregamos seguridad por si acaso
-    if(btnIndex >= 0) {
+    if (btnIndex >= 0) {
         document.querySelectorAll('.nav-btn')[btnIndex].classList.add('active');
     }
 }
@@ -102,7 +102,7 @@ function connectWS() {
     //         else if (payload.temperatura_celsius !== undefined) {
     //             processTelemetry(payload);
     //         }
-            
+
     //         else if (payload.type === 'analysis_result') {
     //             renderMLCharts(payload.data);
     //         }
@@ -117,7 +117,7 @@ function connectWS() {
             // 1. Manejar Alertas
             if (payload.type === 'alert') {
                 renderAlert(payload.data);
-            } 
+            }
             // 2. Manejar Telemetría (JSON completo)
             else if (payload.temperatura_celsius !== undefined) {
                 processTelemetry(payload);
@@ -144,7 +144,7 @@ function processTelemetry(data) {
 
     // 3. ACTUALIZAR ADMINISTRADOR (Estadísticas acumuladas en sesión)
     updateAdminLogic(data, now);
-    
+
     // 4. ACTUALIZAR GRÁFICO
     updateChart(now, data.temperatura_celsius, data.humedad_porcentaje);
 }
@@ -206,8 +206,8 @@ function updateTechView(data, timestamp) {
     entry.className = 'log-entry';
     const qcClass = qcApproved ? '' : 'log-error';
     // Mostrar datos clave en una línea para fácil lectura
-    entry.innerHTML = `<span class="${qcClass}">[${timestamp}] QC:${qcApproved?'OK':'FAIL'} | T:${data.temperatura_celsius} | H:${data.humedad_porcentaje} | D:${data.distancia_cm}</span>`;
-    
+    entry.innerHTML = `<span class="${qcClass}">[${timestamp}] QC:${qcApproved ? 'OK' : 'FAIL'} | T:${data.temperatura_celsius} | H:${data.humedad_porcentaje} | D:${data.distancia_cm}</span>`;
+
     rawLog.insertBefore(entry, rawLog.firstChild);
     if (rawLog.children.length > 50) rawLog.removeChild(rawLog.lastChild);
 }
@@ -244,7 +244,7 @@ function updateAdminLogic(data, timestamp) {
 
 function updateChart(label, temp, hum) {
     if (!chart) return;
-    
+
     chart.data.labels.push(label);
     chart.data.datasets[0].data.push(temp);
     chart.data.datasets[1].data.push(hum);
@@ -261,10 +261,10 @@ function updateChart(label, temp, hum) {
 function renderAlert(alertData) {
     const list = document.getElementById('alerts-list');
     const item = document.createElement('div');
-    
+
     let typeClass = 'alert-info';
     let icon = 'fa-info-circle';
-    
+
     if (alertData.priority === 'high') { typeClass = 'alert-warning'; icon = 'fa-exclamation-triangle'; }
     if (alertData.priority === 'critical') { typeClass = 'alert-critical'; icon = 'fa-fire'; }
 
@@ -273,7 +273,7 @@ function renderAlert(alertData) {
         <div style="font-weight:bold;"><i class="fas ${icon}"></i> ${alertData.message}</div>
         <small>${new Date().toLocaleTimeString()} - Prioridad: ${alertData.priority}</small>
     `;
-    
+
     list.insertBefore(item, list.firstChild);
     if (list.children.length > 10) list.removeChild(list.lastChild);
 }
@@ -282,6 +282,7 @@ function renderAlert(alertData) {
 window.addEventListener('load', () => {
     initChart();
     connectWS();
+    initAzureService();
 });
 
 // --- FUNCIONES DE INTELIGENCIA ARTIFICIAL ---
@@ -291,7 +292,7 @@ function requestAnalysis() {
     const end = document.getElementById('ai-end-date').value;
     const clusters = document.getElementById('ai-clusters').value;
 
-    if(!start || !end) {
+    if (!start || !end) {
         alert("Por favor selecciona un rango de fechas válido.");
         return;
     }
@@ -304,8 +305,8 @@ function requestAnalysis() {
         end_date: new Date(end).toISOString(),
         n_clusters: clusters
     };
-    
-    if(ws && ws.readyState === WebSocket.OPEN) {
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(payload));
         console.log("Petición de análisis enviada al Fog Layer...");
     } else {
@@ -314,30 +315,30 @@ function requestAnalysis() {
 }
 
 function renderMLCharts(data) {
-    if(data.error) { 
-        alert("Error del servidor: " + data.error); 
-        return; 
+    if (data.error) {
+        alert("Error del servidor: " + data.error);
+        return;
     }
-    
+
     const records = data.datos_analizados;
     const predicciones = data.prediccion_futura;
 
     // --- 1. GRÁFICO CLUSTERING (Scatter Plot) ---
     const ctxCluster = document.getElementById('clusterChart').getContext('2d');
-    
+
     // Preparar colores para los grupos
     const colors = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6'];
     const datasets = [];
-    
+
     // Identificar cuántos grupos únicos devolvió el algoritmo
     const uniqueClusters = [...new Set(records.map(r => r.cluster))];
-    
+
     uniqueClusters.forEach((cId, index) => {
         // Filtramos los puntos que pertenecen a este grupo
         const clusterPoints = records
             .filter(r => r.cluster === cId)
             .map(r => ({ x: r.temp_celsius, y: r.humedad_porcentaje }));
-            
+
         datasets.push({
             label: `Grupo ${cId + 1}`,
             data: clusterPoints,
@@ -347,20 +348,20 @@ function renderMLCharts(data) {
         });
     });
 
-    if(clusterChart) clusterChart.destroy();
+    if (clusterChart) clusterChart.destroy();
     clusterChart = new Chart(ctxCluster, {
         data: { datasets: datasets },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             scales: {
-                x: { title: {display: true, text: 'Temperatura (°C)'}, type: 'linear', position: 'bottom' },
-                y: { title: {display: true, text: 'Humedad (%)'} }
+                x: { title: { display: true, text: 'Temperatura (°C)' }, type: 'linear', position: 'bottom' },
+                y: { title: { display: true, text: 'Humedad (%)' } }
             },
             plugins: {
                 tooltip: {
                     callbacks: {
-                        label: function(context) {
+                        label: function (context) {
                             return `T: ${context.parsed.x}°C, H: ${context.parsed.y}%`;
                         }
                     }
@@ -371,7 +372,7 @@ function renderMLCharts(data) {
 
     // --- 2. GRÁFICO INFERENCIA (Línea de Predicción) ---
     const ctxInf = document.getElementById('inferenceChart').getContext('2d');
-    
+
     // Datos Reales (Histórico)
     const datosReales = records.map(r => r.temp_celsius);
     const labels = records.map((r, i) => `T-${i}`); // Etiquetas simples de tiempo
@@ -380,16 +381,16 @@ function renderMLCharts(data) {
     // Rellenamos con 'null' la parte histórica para que la línea naranja empiece al final
     const datosPrediccion = Array(labels.length).fill(null);
     const labelsExtendidos = [...labels];
-    
+
     // Conectar el último punto real con la primera predicción visualmente
     datosPrediccion[labels.length - 1] = datosReales[datosReales.length - 1];
 
     predicciones.forEach((valor, i) => {
-        labelsExtendidos.push(`Futuro +${i+1}`);
+        labelsExtendidos.push(`Futuro +${i + 1}`);
         datosPrediccion.push(valor);
     });
 
-    if(inferenceChart) inferenceChart.destroy();
+    if (inferenceChart) inferenceChart.destroy();
     inferenceChart = new Chart(ctxInf, {
         type: 'line',
         data: {
@@ -418,10 +419,227 @@ function renderMLCharts(data) {
             responsive: true,
             maintainAspectRatio: false,
             scales: {
-                y: { title: {display: true, text: 'Temperatura (°C)'} }
+                y: { title: { display: true, text: 'Temperatura (°C)' } }
             }
         }
     });
-    
+
     alert("Análisis completado. Revisa las gráficas.");
+}
+
+// FUNCIONES AZURE STORAGE
+
+/**
+ * Inicializa el servicio Azure Storage via servidor Express
+ */
+function initAzureService() {
+
+    // Test de conectividad con el servidor
+    fetch('http://localhost:3000/api/health')
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'ok' && data.azure === 'connected') {
+                updateAzureStatus('success', 'Conectado exitosamente a Azure vía servidor Express');
+                console.log('Servidor Express conectado a Azure');
+            } else {
+                updateAzureStatus('error', 'Servidor conectado pero Azure no disponible');
+            }
+        })
+        .catch(error => {
+            updateAzureStatus('error', 'No se puede conectar al servidor Express. ¿Está corriendo en puerto 3000?');
+            console.error('Error conectando al servidor:', error);
+        });
+}
+
+/**
+ * Actualiza el indicador de estado de Azure en la UI
+ */
+function updateAzureStatus(type, message) {
+    const statusDiv = document.getElementById('azure-status');
+    const statusText = document.getElementById('azure-status-text');
+
+    if (!statusDiv || !statusText) return;
+
+    statusText.textContent = message;
+
+    // Cambiar color según el tipo
+    if (type === 'success') {
+        statusDiv.style.background = '#e6f4ea';
+        statusDiv.style.color = '#1e8e3e';
+        statusDiv.style.borderLeft = '4px solid #1e8e3e';
+    } else if (type === 'error') {
+        statusDiv.style.background = '#fce8e6';
+        statusDiv.style.color = '#d93025';
+        statusDiv.style.borderLeft = '4px solid #d93025';
+    } else if (type === 'loading') {
+        statusDiv.style.background = '#e8f4fd';
+        statusDiv.style.color = '#0078d4';
+        statusDiv.style.borderLeft = '4px solid #0078d4';
+    } else {
+        statusDiv.style.background = '#f5f5f5';
+        statusDiv.style.color = '#666';
+        statusDiv.style.borderLeft = '4px solid #ccc';
+    }
+}
+
+/**
+ * Carga datos históricos de Azure por rango de fechas
+ * Función llamada desde el botón "Cargar Datos" en la vista de Administrador
+ */
+async function loadAzureHistoricalData() {
+    const startInput = document.getElementById('azure-start-date').value;
+    const endInput = document.getElementById('azure-end-date').value;
+
+    if (!startInput || !endInput) {
+        alert('Por favor selecciona un rango de fechas válido');
+        return;
+    }
+
+    const startDate = new Date(startInput);
+    const endDate = new Date(endInput);
+
+    if (startDate > endDate) {
+        alert('La fecha de inicio debe ser anterior a la fecha de fin');
+        return;
+    }
+
+    try {
+        updateAzureStatus('loading', `Buscando datos entre ${startDate.toLocaleString()} y ${endDate.toLocaleString()}...`);
+
+        // Llamar al servidor Express
+        const response = await fetch(`http://localhost:3000/api/files/range?start=${startDate.toISOString()}&end=${endDate.toISOString()}`);
+        const result = await response.json();
+
+        if (!result.success) {
+            throw new Error(result.error || 'Error desconocido');
+        }
+
+        const data = result.data;
+
+        if (data.length === 0) {
+            updateAzureStatus('info', 'No se encontraron datos en el rango especificado');
+            displayAzureData([]);
+            return;
+        }
+
+        updateAzureStatus('success', `${data.length} registros cargados exitosamente desde Azure`);
+
+        // Mostrar datos en la UI
+        displayAzureData(data);
+
+        // Opcionalmente: actualizar gráfico con datos históricos
+        updateChartWithAzureData(data);
+
+    } catch (error) {
+        console.error('Error cargando datos de Azure:', error);
+        updateAzureStatus('error', `Error: ${error.message}`);
+        alert(`Error al cargar datos: ${error.message}\n\nVerifica que el servidor Express esté corriendo en puerto 3000`);
+    }
+}
+
+/**
+ * Carga el último registro disponible en Azure
+ */
+async function loadLatestAzureData() {
+    try {
+        updateAzureStatus('loading', 'Buscando el registro más reciente...');
+
+        // Llamar al servidor Express
+        const response = await fetch('http://localhost:3000/api/files/latest');
+        const result = await response.json();
+
+        if (!result.success) {
+            throw new Error(result.error || 'Error desconocido');
+        }
+
+        const latestData = result.data;
+
+        if (!latestData) {
+            updateAzureStatus('info', 'No se encontraron datos en Azure');
+            displayAzureData([]);
+            return;
+        }
+
+        updateAzureStatus('success', 'Último registro cargado exitosamente');
+        displayAzureData([latestData]);
+
+    } catch (error) {
+        console.error('Error cargando último registro:', error);
+        updateAzureStatus('error', `Error: ${error.message}`);
+    }
+}
+
+/**
+ * Muestra los datos de Azure en formato tabla/lista
+ */
+function displayAzureData(data) {
+    const previewDiv = document.getElementById('azure-data-preview');
+
+    if (!previewDiv) return;
+
+    if (data.length === 0) {
+        previewDiv.innerHTML = '<div style="color: #999; text-align: center;">No hay datos para mostrar</div>';
+        return;
+    }
+
+    // Crear tabla HTML con los datos
+    let html = '<table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">';
+    html += '<thead><tr style="background: #0078d4; color: white; text-align: left;">';
+    html += '<th style="padding: 8px;">Fecha/Hora</th>';
+    html += '<th style="padding: 8px;">Temp (°C)</th>';
+    html += '<th style="padding: 8px;">Humedad (%)</th>';
+    html += '<th style="padding: 8px;">Distancia (cm)</th>';
+    html += '<th style="padding: 8px;">Vehículo</th>';
+    html += '<th style="padding: 8px;">Barrera</th>';
+    html += '</tr></thead><tbody>';
+
+    data.slice(0, 100).forEach((item, index) => {
+        const rowColor = index % 2 === 0 ? '#f9f9f9' : '#ffffff';
+        const timestamp = item._timestamp ? new Date(item._timestamp).toLocaleString() : 'N/A';
+        const vehiculo = item.vehiculo_en_entrada_detectado ? 'Sí' : 'No';
+        const barrera = item.barrera_abierta ? 'Abierta' : 'Cerrada';
+
+        html += `<tr style="background: ${rowColor};">`;
+        html += `<td style="padding: 8px; border-bottom: 1px solid #eee;">${timestamp}</td>`;
+        html += `<td style="padding: 8px; border-bottom: 1px solid #eee;">${item.temperatura_celsius?.toFixed(1) || 'N/A'}</td>`;
+        html += `<td style="padding: 8px; border-bottom: 1px solid #eee;">${item.humedad_porcentaje?.toFixed(1) || 'N/A'}</td>`;
+        html += `<td style="padding: 8px; border-bottom: 1px solid #eee;">${item.distancia_cm?.toFixed(0) || 'N/A'}</td>`;
+        html += `<td style="padding: 8px; border-bottom: 1px solid #eee;">${vehiculo}</td>`;
+        html += `<td style="padding: 8px; border-bottom: 1px solid #eee;">${barrera}</td>`;
+        html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+
+    if (data.length > 100) {
+        html += `<div style="text-align: center; padding: 10px; color: #666; background: #fff3cd;">
+            Mostrando los primeros 100 de ${data.length} registros
+        </div>`;
+    }
+
+    previewDiv.innerHTML = html;
+}
+
+/**
+ * Actualiza el gráfico de tendencias con datos históricos de Azure
+ */
+function updateChartWithAzureData(data) {
+    if (!chart) return;
+
+    // Limpiar datos actuales
+    chart.data.labels = [];
+    chart.data.datasets[0].data = [];
+    chart.data.datasets[1].data = [];
+
+    // Agregar datos de Azure
+    data.slice(0, 50).forEach(item => {
+        const timestamp = item._timestamp ? new Date(item._timestamp).toLocaleTimeString() : 'N/A';
+        chart.data.labels.push(timestamp);
+        chart.data.datasets[0].data.push(item.temperatura_celsius || null);
+        chart.data.datasets[1].data.push(item.humedad_porcentaje || null);
+    });
+
+    chart.update();
+
+    console.log(`Gráfico actualizado con ${data.length} puntos de Azure`);
 }

@@ -3,3 +3,21 @@ fog-layer/__pycache__/qc.cpython-313.pyc
 fog-layer/__pycache__/notificationEngine.cpython-313.pyc
 
 .vscode/
+
+# Azure credentials y configuración sensible
+*.env
+client-layer/src/.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Node modules
+node_modules/
+package-lock.json
+
+# OS files
+.DS_Store
+Thumbs.db
