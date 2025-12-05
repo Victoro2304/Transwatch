@@ -140,30 +140,7 @@ class TimeSeriesManager:
         except Exception as e:
             print(f"Error consultando KPIs: {e}")
             return []
-
-# Bloque para probar la clase individualmente
-if __name__ == "__main__":
-    print("Probando TimeSeriesManager...")
-    manager = TimeSeriesManager()
-    
-    # Datos de prueba
-    datos_prueba = {
-        "temperatura_celsius": 25.5,
-        "humedad_porcentaje": 45.2,
-        "luz_adc": 300,
-        "distancia_cm": 999,
-        "vehiculo_en_entrada_detectado": False,
-        "barrera_abierta": False,
-        "luces_parking_encendidas": False,
-        "alarma_temperatura_activa": False
-    }
-
-    if manager.client:
-        manager.almacenar_lectura(datos_prueba, "ESP32_Test_01", "Clean")
-        manager.close()
-    else:
-        print("No se pudo inicializar el cliente, revisa tu .env y conexión.")
-
+        
     def consultar_rango_fechas(self, fecha_inicio, fecha_fin):
         """
         Consulta datos para Clustering e Inferencia dentro de un rango.
@@ -198,3 +175,26 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Error consultando rango de fechas: {e}")
             return []
+
+# Bloque para probar la clase individualmente
+if __name__ == "__main__":
+    print("Probando TimeSeriesManager...")
+    manager = TimeSeriesManager()
+    
+    # Datos de prueba
+    datos_prueba = {
+        "temperatura_celsius": 25.5,
+        "humedad_porcentaje": 45.2,
+        "luz_adc": 300,
+        "distancia_cm": 999,
+        "vehiculo_en_entrada_detectado": False,
+        "barrera_abierta": False,
+        "luces_parking_encendidas": False,
+        "alarma_temperatura_activa": False
+    }
+
+    if manager.client:
+        manager.almacenar_lectura(datos_prueba, "ESP32_Test_01", "Clean")
+        manager.close()
+    else:
+        print("No se pudo inicializar el cliente, revisa tu .env y conexión.")
