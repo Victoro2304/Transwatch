@@ -1,10 +1,19 @@
+// client-layer/script.js
+
 // --- VARIABLES DE ESTADO ---
 let ws = null;
-let chart = null;
 let clusterChart = null;
 let inferenceChart = null;
 
-// Contadores para KPIs
+// Objeto para guardar las instancias de los gráficos del admin
+let adminCharts = {
+    hourly: null,
+    daily: null,
+    env: null,
+    realtime: null
+};
+
+// Contadores para KPIs en tiempo real (Sesión actual)
 let stats = {
     totalMsgs: 0,
     passedMsgs: 0,
@@ -14,33 +23,78 @@ let stats = {
     tempCount: 0
 };
 
-// Estado previo para detectar entradas de vehículos
+// Estado previo para detectar flancos (entradas de vehículos)
 let lastVehicleState = false;
 
-// --- INICIALIZACIÓN ---
-function initChart() {
-    const ctx = document.getElementById('businessChart').getContext('2d');
-    chart = new Chart(ctx, {
+// --- INICIALIZACIÓN DE GRÁFICOS (ADMINISTRADOR) ---
+function initAdminCharts() {
+    // 1. GRÁFICO DE FLUJO POR HORA
+    const ctxHourly = document.getElementById('hourlyFlowChart').getContext('2d');
+    adminCharts.hourly = new Chart(ctxHourly, {
+        type: 'bar',
+        data: {
+            labels: ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'],
+            datasets: [{
+                label: 'Vehículos Promedio',
+                data: [], 
+                backgroundColor: 'rgba(52, 152, 219, 0.6)',
+                borderColor: 'rgba(52, 152, 219, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, title: { display: true, text: 'Cantidad' } } }
+        }
+    });
+
+    // 2. GRÁFICO DE ENTRADAS DIARIAS
+    const ctxDaily = document.getElementById('dailyEntriesChart').getContext('2d');
+    adminCharts.daily = new Chart(ctxDaily, {
+        type: 'bar',
+        data: {
+            labels: [], 
+            datasets: [{
+                label: 'Total Entradas',
+                data: [],
+                backgroundColor: 'rgba(46, 204, 113, 0.6)',
+                borderColor: 'rgba(46, 204, 113, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+
+    // 3. GRÁFICO AMBIENTAL (SEMANAL - HISTÓRICO)
+    const ctxEnv = document.getElementById('environmentalChart').getContext('2d');
+    adminCharts.env = new Chart(ctxEnv, {
         type: 'line',
         data: {
             labels: [],
             datasets: [
                 {
-                    label: 'Temperatura (°C)',
+                    label: 'Temp Promedio (°C)',
                     data: [],
-                    borderColor: '#e74c3c', // Rojo suave
+                    borderColor: '#e74c3c',
                     backgroundColor: 'rgba(231, 76, 60, 0.1)',
                     yAxisID: 'y',
-                    tension: 0.4,
+                    tension: 0.3,
                     fill: true
                 },
                 {
-                    label: 'Humedad (%)',
+                    label: 'Humedad Promedio (%)',
                     data: [],
-                    borderColor: '#3498db', // Azul
+                    borderColor: '#3498db',
                     backgroundColor: 'rgba(52, 152, 219, 0.1)',
                     yAxisID: 'y1',
-                    tension: 0.4,
+                    tension: 0.3,
                     fill: true
                 }
             ]
@@ -50,21 +104,116 @@ function initChart() {
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             scales: {
-                y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Temp (°C)' } },
-                y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Humedad (%)' } }
+                y: { type: 'linear', display: true, position: 'left', title: {display: true, text: 'Temp (°C)'} },
+                y1: { type: 'linear', display: true, position: 'right', grid: {drawOnChartArea: false}, title: {display: true, text: '% Humedad'} }
+            }
+        }
+    });
+
+    // 4. GRÁFICO AMBIENTAL (TIEMPO REAL - NUEVO)
+    const ctxRealtime = document.getElementById('realtimeEnvChart').getContext('2d');
+    adminCharts.realtime = new Chart(ctxRealtime, {
+        type: 'line',
+        data: {
+            labels: [], // Se llenará en vivo
+            datasets: [
+                {
+                    label: 'Temperatura Vivo (°C)',
+                    data: [],
+                    borderColor: '#e67e22', // Naranja fuerte
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    yAxisID: 'y',
+                    tension: 0.4,
+                    fill: false
+                },
+                {
+                    label: 'Humedad Vivo (%)',
+                    data: [],
+                    borderColor: '#1abc9c', // Verde agua
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    yAxisID: 'y1',
+                    tension: 0.4,
+                    fill: false
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false, // Desactivar animación para mejor rendimiento en vivo
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: { title: { display: true, text: 'Hora Actual' } },
+                y: { type: 'linear', display: true, position: 'left', title: {display: true, text: 'Temp (°C)'} },
+                y1: { type: 'linear', display: true, position: 'right', grid: {drawOnChartArea: false}, title: {display: true, text: '% Humedad'} }
             }
         }
     });
 }
 
+// --- CARGA DE DATOS REALES (INFLUXDB -> API) ---
+async function loadRealData() {
+    try {
+        const response = await fetch('http://localhost:5000/api/estadisticas');
+        
+        if (!response.ok) {
+            throw new Error(`Error HTTP: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log("✅ Datos históricos recibidos:", data);
+
+        // ACTUALIZAR GRÁFICO 1: FLUJO POR HORA
+        if (data.flujo_hora) {
+            adminCharts.hourly.data.labels = data.flujo_hora.labels;
+            adminCharts.hourly.data.datasets[0].data = data.flujo_hora.valores;
+            adminCharts.hourly.update();
+
+            const maxTraffic = Math.max(...data.flujo_hora.valores);
+            const peakIndex = data.flujo_hora.valores.indexOf(maxTraffic);
+            const peakLabel = data.flujo_hora.labels[peakIndex] || "--:--";
+            document.getElementById('admin-peak-hour').textContent = peakLabel;
+        }
+
+        // ACTUALIZAR GRÁFICO 2: ENTRADAS DIARIAS
+        if (data.entradas_diarias) {
+            adminCharts.daily.data.labels = data.entradas_diarias.labels;
+            adminCharts.daily.data.datasets[0].data = data.entradas_diarias.valores;
+            adminCharts.daily.update();
+
+            const hoy = data.entradas_diarias.valores[data.entradas_diarias.valores.length - 1] || 0;
+            document.getElementById('admin-entries-today').textContent = hoy;
+            stats.entriesToday = hoy;
+        }
+
+        // ACTUALIZAR GRÁFICO 3: AMBIENTAL SEMANAL (Histórico)
+        if (data.ambiental) {
+            adminCharts.env.data.labels = data.ambiental.labels;
+            adminCharts.env.data.datasets[0].data = data.ambiental.temp;
+            adminCharts.env.data.datasets[1].data = data.ambiental.hum;
+            adminCharts.env.update();
+
+            const temps = data.ambiental.temp;
+            if (temps.length > 0) {
+                const avgTemp = (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1);
+                document.getElementById('admin-weekly-avg').textContent = avgTemp + " °C";
+            }
+        }
+
+    } catch (error) {
+        console.error("Error cargando datos históricos:", error);
+    }
+}
+
+// --- GESTIÓN DE PESTAÑAS ---
 function switchTab(tabId) {
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
     document.getElementById(tabId).classList.add('active');
 
     const btnIndex = ['operator', 'admin', 'tech', 'ai_analytics'].indexOf(tabId);
-
-    // Agregamos seguridad por si acaso
     if (btnIndex >= 0) {
         document.querySelectorAll('.nav-btn')[btnIndex].classList.add('active');
     }
@@ -86,30 +235,6 @@ function connectWS() {
         setTimeout(connectWS, 3000);
     };
 
-    // ws.onmessage = (event) => {
-    //     try {
-    //         const payload = JSON.parse(event.data);
-
-    //         // Manejar Alertas
-    //         if (payload.type === 'alert') {
-    //             renderAlert(payload.data);
-    //         } 
-    //         // Manejar Telemetría (JSON completo)
-    //         else if (payload.temperatura_celsius !== undefined) {
-    //             processTelemetry(payload);
-    //         }
-    //         // ... código existente ...
-    //         else if (payload.temperatura_celsius !== undefined) {
-    //             processTelemetry(payload);
-    //         }
-
-    //         else if (payload.type === 'analysis_result') {
-    //             renderMLCharts(payload.data);
-    //         }
-    //     } catch (e) {
-    //         console.error("Error parseando mensaje:", e);
-    //     }
-    // };
     ws.onmessage = (event) => {
         try {
             const payload = JSON.parse(event.data);
@@ -122,7 +247,7 @@ function connectWS() {
             else if (payload.temperatura_celsius !== undefined) {
                 processTelemetry(payload);
             }
-            // 3. Manejar Resultados de Inteligencia Artificial (NUEVO)
+            // 3. Manejar Resultados de Inteligencia Artificial
             else if (payload.type === 'analysis_result') {
                 renderMLCharts(payload.data);
             }
@@ -142,43 +267,60 @@ function processTelemetry(data) {
     // 2. ACTUALIZAR TÉCNICO
     updateTechView(data, now);
 
-    // 3. ACTUALIZAR ADMINISTRADOR (Estadísticas acumuladas en sesión)
-    updateAdminLogic(data, now);
+    // 3. ACTUALIZAR ADMINISTRADOR (KPIs)
+    updateAdminCards(data, now);
 
-    // 4. ACTUALIZAR GRÁFICO
-    updateChart(now, data.temperatura_celsius, data.humedad_porcentaje);
+    // 4. ACTUALIZAR ADMINISTRADOR (GRÁFICO EN VIVO)
+    updateRealtimeAdminChart(now, data.temperatura_celsius, data.humedad_porcentaje);
+}
+
+// --- NUEVA FUNCIÓN PARA EL GRÁFICO ADMIN EN VIVO ---
+function updateRealtimeAdminChart(label, temp, hum) {
+    if (!adminCharts.realtime) return;
+
+    // Agregar nuevos datos
+    adminCharts.realtime.data.labels.push(label);
+    adminCharts.realtime.data.datasets[0].data.push(temp);
+    adminCharts.realtime.data.datasets[1].data.push(hum);
+
+    // Limitar a los últimos 20 puntos para que se vea el efecto de desplazamiento
+    const MAX_POINTS = 20;
+    if (adminCharts.realtime.data.labels.length > MAX_POINTS) {
+        adminCharts.realtime.data.labels.shift();
+        adminCharts.realtime.data.datasets[0].data.shift();
+        adminCharts.realtime.data.datasets[1].data.shift();
+    }
+
+    // Actualizar gráfico
+    adminCharts.realtime.update();
 }
 
 function updateOperatorView(data) {
-    // Barrera
     const elBarrera = document.getElementById('op-barrera');
     if (data.barrera_abierta) {
         elBarrera.textContent = "ABIERTA";
-        elBarrera.style.color = "#27ae60"; // Verde
+        elBarrera.style.color = "#27ae60"; 
     } else {
         elBarrera.textContent = "CERRADA";
-        elBarrera.style.color = "#c0392b"; // Rojo
+        elBarrera.style.color = "#c0392b"; 
     }
 
-    // Vehículo
     const elVehiculo = document.getElementById('op-vehiculo');
     if (data.vehiculo_en_entrada_detectado) {
         elVehiculo.textContent = "VEHÍCULO DETECTADO";
-        elVehiculo.style.color = "#f39c12"; // Naranja
+        elVehiculo.style.color = "#f39c12"; 
     } else {
         elVehiculo.textContent = "LIBRE";
-        elVehiculo.style.color = "#27ae60"; // Verde
+        elVehiculo.style.color = "#27ae60"; 
     }
 
-    // Ambiente
     document.getElementById('op-temp').textContent = data.temperatura_celsius.toFixed(1) + " °C";
     document.getElementById('op-hum').textContent = "Humedad: " + data.humedad_porcentaje.toFixed(1) + " %";
 }
 
 function updateTechView(data, timestamp) {
-    // KPI: Calidad de Datos
     stats.totalMsgs++;
-    const qcApproved = data.qc_approved !== false; // Asumir true si no viene
+    const qcApproved = data.qc_approved !== false; 
     if (qcApproved) stats.passedMsgs++;
 
     const qcRate = ((stats.passedMsgs / stats.totalMsgs) * 100).toFixed(1);
@@ -186,7 +328,6 @@ function updateTechView(data, timestamp) {
     document.getElementById('tech-total-msgs').textContent = stats.totalMsgs;
     document.getElementById('tech-rejected-msgs').textContent = (stats.totalMsgs - stats.passedMsgs);
 
-    // Bitácora de Fallos
     if (!qcApproved) {
         const logDiv = document.getElementById('tech-qc-log');
         const msg = document.createElement('div');
@@ -195,17 +336,14 @@ function updateTechView(data, timestamp) {
         logDiv.prepend(msg);
     }
 
-    // KPI: Actuadores (Iconos)
     toggleActuator('icon-barrier', data.barrera_abierta, 'actuator-on', 'actuator-off');
     toggleActuator('icon-light', data.luces_parking_encendidas, 'actuator-on', 'actuator-off');
     toggleActuator('icon-buzzer', data.alarma_temperatura_activa, 'actuator-alert', 'actuator-off');
 
-    // Log Crudo 
     const rawLog = document.getElementById('tech-raw-log');
     const entry = document.createElement('div');
     entry.className = 'log-entry';
     const qcClass = qcApproved ? '' : 'log-error';
-    // Mostrar datos clave en una línea para fácil lectura
     entry.innerHTML = `<span class="${qcClass}">[${timestamp}] QC:${qcApproved ? 'OK' : 'FAIL'} | T:${data.temperatura_celsius} | H:${data.humedad_porcentaje} | D:${data.distancia_cm}</span>`;
 
     rawLog.insertBefore(entry, rawLog.firstChild);
@@ -223,39 +361,13 @@ function toggleActuator(id, state, classOn, classOff) {
     }
 }
 
-function updateAdminLogic(data, timestamp) {
-    // Detectar entrada 
+function updateAdminCards(data, timestamp) {
+    // KPI: Entradas Hoy (Incrementar si hay flanco positivo)
     if (data.vehiculo_en_entrada_detectado && !lastVehicleState) {
         stats.entriesToday++;
-        stats.lastEntryTime = timestamp;
-        document.getElementById('admin-total-entries').textContent = stats.entriesToday;
-        document.getElementById('admin-last-entry').textContent = stats.lastEntryTime;
+        document.getElementById('admin-entries-today').textContent = stats.entriesToday;
     }
     lastVehicleState = data.vehiculo_en_entrada_detectado;
-
-    // Promedio Temp (Acumulado sesión)
-    if (data.temperatura_celsius) {
-        stats.tempSum += data.temperatura_celsius;
-        stats.tempCount++;
-        const avg = (stats.tempSum / stats.tempCount).toFixed(1);
-        document.getElementById('admin-avg-temp').textContent = avg + " °C";
-    }
-}
-
-function updateChart(label, temp, hum) {
-    if (!chart) return;
-
-    chart.data.labels.push(label);
-    chart.data.datasets[0].data.push(temp);
-    chart.data.datasets[1].data.push(hum);
-
-    // Mantener últimos 20 puntos
-    if (chart.data.labels.length > 20) {
-        chart.data.labels.shift();
-        chart.data.datasets[0].data.shift();
-        chart.data.datasets[1].data.shift();
-    }
-    chart.update('none'); // Animación suave
 }
 
 function renderAlert(alertData) {
@@ -280,12 +392,13 @@ function renderAlert(alertData) {
 
 // Arranque
 window.addEventListener('load', () => {
-    initChart();
+    initAdminCharts();
+    loadRealData(); // Cargar datos históricos desde API
     connectWS();
     initAzureService();
 });
 
-// --- FUNCIONES DE INTELIGENCIA ARTIFICIAL ---
+// --- FUNCIONES DE INTELIGENCIA ARTIFICIAL (MANTENIDAS) ---
 
 function requestAnalysis() {
     const start = document.getElementById('ai-start-date').value;
@@ -297,8 +410,6 @@ function requestAnalysis() {
         return;
     }
 
-    // Convertir fechas al formato ISO que espera el backend
-    // Agregamos segundos para completar el formato
     const payload = {
         type: "request_analysis",
         start_date: new Date(start).toISOString(),
@@ -323,18 +434,13 @@ function renderMLCharts(data) {
     const records = data.datos_analizados;
     const predicciones = data.prediccion_futura;
 
-    // --- 1. GRÁFICO CLUSTERING (Scatter Plot) ---
     const ctxCluster = document.getElementById('clusterChart').getContext('2d');
-
-    // Preparar colores para los grupos
     const colors = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6'];
     const datasets = [];
 
-    // Identificar cuántos grupos únicos devolvió el algoritmo
     const uniqueClusters = [...new Set(records.map(r => r.cluster))];
 
     uniqueClusters.forEach((cId, index) => {
-        // Filtramos los puntos que pertenecen a este grupo
         const clusterPoints = records
             .filter(r => r.cluster === cId)
             .map(r => ({ x: r.temp_celsius, y: r.humedad_porcentaje }));
@@ -370,19 +476,13 @@ function renderMLCharts(data) {
         }
     });
 
-    // --- 2. GRÁFICO INFERENCIA (Línea de Predicción) ---
     const ctxInf = document.getElementById('inferenceChart').getContext('2d');
-
-    // Datos Reales (Histórico)
     const datosReales = records.map(r => r.temp_celsius);
-    const labels = records.map((r, i) => `T-${i}`); // Etiquetas simples de tiempo
+    const labels = records.map((r, i) => `T-${i}`); 
 
-    // Datos Futuros (Predicción)
-    // Rellenamos con 'null' la parte histórica para que la línea naranja empiece al final
     const datosPrediccion = Array(labels.length).fill(null);
     const labelsExtendidos = [...labels];
 
-    // Conectar el último punto real con la primera predicción visualmente
     datosPrediccion[labels.length - 1] = datosReales[datosReales.length - 1];
 
     predicciones.forEach((valor, i) => {
@@ -408,7 +508,7 @@ function renderMLCharts(data) {
                     label: 'Predicción AI',
                     data: datosPrediccion,
                     borderColor: '#e67e22',
-                    borderDash: [5, 5], // Línea punteada
+                    borderDash: [5, 5], 
                     pointBackgroundColor: '#e67e22',
                     tension: 0.1,
                     fill: false
@@ -427,14 +527,8 @@ function renderMLCharts(data) {
     alert("Análisis completado. Revisa las gráficas.");
 }
 
-// FUNCIONES AZURE STORAGE
-
-/**
- * Inicializa el servicio Azure Storage via servidor Express
- */
+// FUNCIONES AZURE STORAGE (MANTENIDAS)
 function initAzureService() {
-
-    // Test de conectividad con el servidor
     fetch('http://localhost:3000/api/health')
         .then(response => response.json())
         .then(data => {
@@ -451,9 +545,6 @@ function initAzureService() {
         });
 }
 
-/**
- * Actualiza el indicador de estado de Azure en la UI
- */
 function updateAzureStatus(type, message) {
     const statusDiv = document.getElementById('azure-status');
     const statusText = document.getElementById('azure-status-text');
@@ -462,7 +553,6 @@ function updateAzureStatus(type, message) {
 
     statusText.textContent = message;
 
-    // Cambiar color según el tipo
     if (type === 'success') {
         statusDiv.style.background = '#e6f4ea';
         statusDiv.style.color = '#1e8e3e';
@@ -482,10 +572,6 @@ function updateAzureStatus(type, message) {
     }
 }
 
-/**
- * Carga datos históricos de Azure por rango de fechas
- * Función llamada desde el botón "Cargar Datos" en la vista de Administrador
- */
 async function loadAzureHistoricalData() {
     const startInput = document.getElementById('azure-start-date').value;
     const endInput = document.getElementById('azure-end-date').value;
@@ -506,7 +592,6 @@ async function loadAzureHistoricalData() {
     try {
         updateAzureStatus('loading', `Buscando datos entre ${startDate.toLocaleString()} y ${endDate.toLocaleString()}...`);
 
-        // Llamar al servidor Express
         const response = await fetch(`http://localhost:3000/api/files/range?start=${startDate.toISOString()}&end=${endDate.toISOString()}`);
         const result = await response.json();
 
@@ -523,12 +608,7 @@ async function loadAzureHistoricalData() {
         }
 
         updateAzureStatus('success', `${data.length} registros cargados exitosamente desde Azure`);
-
-        // Mostrar datos en la UI
         displayAzureData(data);
-
-        // Opcionalmente: actualizar gráfico con datos históricos
-        updateChartWithAzureData(data);
 
     } catch (error) {
         console.error('Error cargando datos de Azure:', error);
@@ -537,14 +617,10 @@ async function loadAzureHistoricalData() {
     }
 }
 
-/**
- * Carga el último registro disponible en Azure
- */
 async function loadLatestAzureData() {
     try {
         updateAzureStatus('loading', 'Buscando el registro más reciente...');
 
-        // Llamar al servidor Express
         const response = await fetch('http://localhost:3000/api/files/latest');
         const result = await response.json();
 
@@ -569,9 +645,6 @@ async function loadLatestAzureData() {
     }
 }
 
-/**
- * Muestra los datos de Azure en formato tabla/lista
- */
 function displayAzureData(data) {
     const previewDiv = document.getElementById('azure-data-preview');
 
@@ -582,7 +655,6 @@ function displayAzureData(data) {
         return;
     }
 
-    // Crear tabla HTML con los datos
     let html = '<table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">';
     html += '<thead><tr style="background: #0078d4; color: white; text-align: left;">';
     html += '<th style="padding: 8px;">Fecha/Hora</th>';
@@ -618,28 +690,4 @@ function displayAzureData(data) {
     }
 
     previewDiv.innerHTML = html;
-}
-
-/**
- * Actualiza el gráfico de tendencias con datos históricos de Azure
- */
-function updateChartWithAzureData(data) {
-    if (!chart) return;
-
-    // Limpiar datos actuales
-    chart.data.labels = [];
-    chart.data.datasets[0].data = [];
-    chart.data.datasets[1].data = [];
-
-    // Agregar datos de Azure
-    data.slice(0, 50).forEach(item => {
-        const timestamp = item._timestamp ? new Date(item._timestamp).toLocaleTimeString() : 'N/A';
-        chart.data.labels.push(timestamp);
-        chart.data.datasets[0].data.push(item.temperatura_celsius || null);
-        chart.data.datasets[1].data.push(item.humedad_porcentaje || null);
-    });
-
-    chart.update();
-
-    console.log(`Gráfico actualizado con ${data.length} puntos de Azure`);
 }

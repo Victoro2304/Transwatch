@@ -65,24 +65,52 @@
         <div class="grid-3">
             <div class="card">
                 <h3><i class="fas fa-car-side"></i> Entradas Hoy</h3>
-                <div id="admin-total-entries" class="kpi-big">0</div>
-                <div class="kpi-sub">Vehículos procesados</div>
+                <div id="admin-entries-today" class="kpi-big">0</div>
+                <div class="kpi-sub">Vehículos en tiempo real</div>
             </div>
             <div class="card">
-                <h3><i class="fas fa-clock"></i> Última Actividad</h3>
-                <div id="admin-last-entry" class="kpi-big" style="font-size: 1.5rem;">--:--</div>
-                <div class="kpi-sub">Hora de detección</div>
+                <h3><i class="fas fa-clock"></i> Hora Pico (Histórico)</h3>
+                <div id="admin-peak-hour" class="kpi-big">--:--</div>
+                <div class="kpi-sub">Mayor afluencia 24h</div>
             </div>
             <div class="card">
-                <h3><i class="fas fa-cloud-sun"></i> Promedio Temp</h3>
-                <div id="admin-avg-temp" class="kpi-big">-- °C</div>
-                <div class="kpi-sub">Calidad ambiental</div>
+                <h3><i class="fas fa-cloud-sun"></i> Promedio Semanal</h3>
+                <div id="admin-weekly-avg" class="kpi-big">-- °C</div>
+                <div class="kpi-sub">Temperatura media</div>
             </div>
         </div>
 
-        <!-- NUEVA SECCIÓN: Datos Históricos desde Azure -->
-        <div class="card" style="border: 2px solid #0078d4;">
-            <h3><i class="fas fa-cloud"></i> Datos Históricos (Azure Storage)</h3>
+        <div class="grid-2">
+            <div class="card">
+                <h3>1. Flujo de Entradas por Hora (Promedio)</h3>
+                <div style="height: 250px;">
+                    <canvas id="hourlyFlowChart"></canvas>
+                </div>
+            </div>
+            <div class="card">
+                <h3>2. Total de Entradas Diarias (Últimos 7 días)</h3>
+                <div style="height: 250px;">
+                    <canvas id="dailyEntriesChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 20px;">
+            <h3>3. Condiciones Ambientales (Tendencia Semanal)</h3>
+            <div style="height: 300px;">
+                <canvas id="environmentalChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3><i class="fas fa-stopwatch"></i> Monitor Ambiental en Vivo (Segundos/Minutos)</h3>
+            <div style="height: 300px;">
+                <canvas id="realtimeEnvChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card" style="border: 2px solid #0078d4; margin-top: 30px;">
+            <h3><i class="fas fa-cloud"></i> Respaldo en la Nube (Azure Storage)</h3>
             <p style="font-size: 0.85em; color: #666; margin-bottom: 15px;">
                 Consulta y visualiza datos almacenados en la nube Azure.
             </p>
@@ -112,16 +140,6 @@
                 <div style="color: #999; text-align: center;">No hay datos cargados aún</div>
             </div>
         </div>
-
-
-        <div class="card">
-            <h3>Tendencia Ambiental (Temperatura y Humedad)</h3>
-            <div style="height: 350px;">
-                <canvas id="businessChart"></canvas>
-            </div>
-        </div>
-
-        
     </div>
 
     <div id="tech" class="view-section">
@@ -171,9 +189,7 @@
             </div>
         </div>
     </div>
-</div>
 
-<!-- SECCIÓN NUEVA: INTELIGENCIA ARTIFICIAL -->
     <div id="ai_analytics" class="view-section">
         <div class="card" style="margin-bottom: 20px;">
             <h3><i class="fas fa-robot"></i> Configuración de Análisis (Fog Computing)</h3>
@@ -213,6 +229,7 @@
             </div>
         </div>
     </div>
+</div>
 
 <script src="script.js"></script>
 </body>
