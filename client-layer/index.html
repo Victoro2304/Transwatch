@@ -1,236 +1,255 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Transwatch - Dashboard Integral</title>
     <link rel="icon" type="image/jpeg" href="imgs/LogoTranswatch.jpeg">
-    
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    
+
     <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
 
-<div class="container">
-    <header>
-        <div style="display: flex; align-items: center; gap: 15px;">
-            <img src="imgs/LogoTranswatch.jpeg" alt="Transwatch Logo" style="width: 128px; height: 128px; border-radius: 8px;">
-            <div>
-                <h1 style="margin: 0; font-size: 1.8rem; color: #0078d4;">Transwatch</h1>
-                <small style="color: #666;">Sistema de Monitoreo Inteligente - Equipo 1</small>
-            </div>
-        </div>
-        <div id="connection-status" class="status-badge status-disconnected">
-            <i class="fas fa-wifi"></i> Desconectado
-        </div>
-    </header>
-
-    <div class="nav-tabs">
-        <button class="nav-btn active" onclick="switchTab('operator')"><i class="fas fa-user-shield"></i> Operador</button>
-        <button class="nav-btn" onclick="switchTab('admin')"><i class="fas fa-chart-line"></i> Administrador</button>
-        <button class="nav-btn" onclick="switchTab('tech')"><i class="fas fa-tools"></i> Técnico</button>
-        <button class="nav-btn" onclick="switchTab('ai_analytics')"><i class="fas fa-brain"></i> Análisis IA</button>
-    </div>
-
-    <div id="operator" class="view-section active">
-        <div class="grid-3">
-            <div class="card">
-                <h3><i class="fas fa-dungeon"></i> Estado Barrera</h3>
-                <div id="op-barrera" class="kpi-big" style="color: #c0392b;">CERRADA</div>
-                <div class="kpi-sub">Servo Motor</div>
-            </div>
-            <div class="card">
-                <h3><i class="fas fa-car"></i> Zona Entrada</h3>
-                <div id="op-vehiculo" class="kpi-big" style="color: #27ae60;">Libre</div>
-                <div class="kpi-sub">Sensor Ultrasónico</div>
-            </div>
-            <div class="card">
-                <h3><i class="fas fa-thermometer-half"></i> Ambiente</h3>
-                <div id="op-temp" class="kpi-big">-- °C</div>
-                <div id="op-hum" class="kpi-sub">Humedad: -- %</div>
-            </div>
-        </div>
-        
-        <div class="card">
-            <h3><i class="fas fa-bell"></i> Monitor de Alertas en Vivo</h3>
-            <div id="alerts-list" style="max-height: 200px; overflow-y: auto;">
-                <div style="color:#aaa; text-align:center;">Esperando eventos...</div>
-            </div>
-        </div>
-    </div>
-
-    <div id="admin" class="view-section">
-        <div class="grid-3">
-            <div class="card">
-                <h3><i class="fas fa-car-side"></i> Entradas Hoy</h3>
-                <div id="admin-entries-today" class="kpi-big">0</div>
-                <div class="kpi-sub">Vehículos en tiempo real</div>
-            </div>
-            <div class="card">
-                <h3><i class="fas fa-clock"></i> Hora Pico (Histórico)</h3>
-                <div id="admin-peak-hour" class="kpi-big">--:--</div>
-                <div class="kpi-sub">Mayor afluencia 24h</div>
-            </div>
-            <div class="card">
-                <h3><i class="fas fa-cloud-sun"></i> Promedio Semanal</h3>
-                <div id="admin-weekly-avg" class="kpi-big">-- °C</div>
-                <div class="kpi-sub">Temperatura media</div>
-            </div>
-        </div>
-
-        <div class="grid-2">
-            <div class="card">
-                <h3>1. Flujo de Entradas por Hora (Promedio)</h3>
-                <div style="height: 250px;">
-                    <canvas id="hourlyFlowChart"></canvas>
-                </div>
-            </div>
-            <div class="card">
-                <h3>2. Total de Entradas Diarias (Últimos 7 días)</h3>
-                <div style="height: 250px;">
-                    <canvas id="dailyEntriesChart"></canvas>
-                </div>
-            </div>
-        </div>
-
-        <div class="card" style="margin-bottom: 20px;">
-            <h3>3. Condiciones Ambientales (Tendencia Semanal)</h3>
-            <div style="height: 300px;">
-                <canvas id="environmentalChart"></canvas>
-            </div>
-        </div>
-
-        <div class="card">
-            <h3><i class="fas fa-stopwatch"></i> Monitor Ambiental en Vivo (Segundos/Minutos)</h3>
-            <div style="height: 300px;">
-                <canvas id="realtimeEnvChart"></canvas>
-            </div>
-        </div>
-
-        <div class="card" style="border: 2px solid #0078d4; margin-top: 30px;">
-            <h3><i class="fas fa-cloud"></i> Respaldo en la Nube (Azure Storage)</h3>
-            <p style="font-size: 0.85em; color: #666; margin-bottom: 15px;">
-                Consulta y visualiza datos almacenados en la nube Azure.
-            </p>
-            
-            <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 15px;">
+    <div class="container">
+        <header>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <img src="imgs/LogoTranswatch.jpeg" alt="Transwatch Logo"
+                    style="width: 128px; height: 128px; border-radius: 8px;">
                 <div>
-                    <label style="font-weight: bold; font-size: 0.9em;">Fecha Inicio:</label><br>
-                    <input type="datetime-local" id="azure-start-date" style="padding: 8px; border: 1px solid #ccc; border-radius: 5px;">
+                    <h1 style="margin: 0; font-size: 1.8rem; color: #0078d4;">Transwatch</h1>
+                    <small style="color: #666;">Sistema de Monitoreo Inteligente - Equipo 1</small>
                 </div>
-                <div>
-                    <label style="font-weight: bold; font-size: 0.9em;">Fecha Fin:</label><br>
-                    <input type="datetime-local" id="azure-end-date" style="padding: 8px; border: 1px solid #ccc; border-radius: 5px;">
+            </div>
+            <div id="connection-status" class="status-badge status-disconnected">
+                <i class="fas fa-wifi"></i> Desconectado
+            </div>
+        </header>
+
+        <div class="nav-tabs">
+            <button class="nav-btn active" onclick="switchTab('operator')"><i class="fas fa-user-shield"></i>
+                Operador</button>
+            <button class="nav-btn" onclick="switchTab('admin')"><i class="fas fa-chart-line"></i>
+                Administrador</button>
+            <button class="nav-btn" onclick="switchTab('tech')"><i class="fas fa-tools"></i> Técnico</button>
+            <button class="nav-btn" onclick="switchTab('ai_analytics')"><i class="fas fa-brain"></i> Análisis
+                IA</button>
+        </div>
+
+        <div id="operator" class="view-section active">
+            <div class="grid-3">
+                <div class="card">
+                    <h3><i class="fas fa-dungeon"></i> Estado Barrera</h3>
+                    <div id="op-barrera" class="kpi-big" style="color: #c0392b;">CERRADA</div>
+                    <div class="kpi-sub">Servo Motor</div>
                 </div>
-                <button onclick="loadAzureHistoricalData()" class="nav-btn" style="background: #0078d4; color: white; border: none; padding: 10px 20px;">
-                    <i class="fas fa-download"></i> Cargar Datos
-                </button>
-                <button onclick="loadLatestAzureData()" class="nav-btn" style="background: #107c10; color: white; border: none; padding: 10px 20px;">
-                    <i class="fas fa-bolt"></i> Último Registro
-                </button>
+                <div class="card">
+                    <h3><i class="fas fa-car"></i> Zona Entrada</h3>
+                    <div id="op-vehiculo" class="kpi-big" style="color: #27ae60;">Libre</div>
+                    <div class="kpi-sub">Sensor Ultrasónico</div>
+                </div>
+                <div class="card">
+                    <h3><i class="fas fa-thermometer-half"></i> Ambiente</h3>
+                    <div id="op-temp" class="kpi-big">-- °C</div>
+                    <div id="op-hum" class="kpi-sub">Humedad: -- %</div>
+                </div>
             </div>
 
-            <div id="azure-status" style="padding: 10px; background: #f5f5f5; border-radius: 5px; margin-bottom: 10px; font-size: 0.9em;">
-                <i class="fas fa-info-circle"></i> <span id="azure-status-text">Esperando consulta...</span>
-            </div>
-
-            <div id="azure-data-preview" style="max-height: 300px; overflow-y: auto; background: #f9f9f9; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 0.85em;">
-                <div style="color: #999; text-align: center;">No hay datos cargados aún</div>
+            <div class="card">
+                <h3><i class="fas fa-bell"></i> Monitor de Alertas en Vivo</h3>
+                <div id="alerts-list" style="max-height: 200px; overflow-y: auto;">
+                    <div style="color:#aaa; text-align:center;">Esperando eventos...</div>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div id="tech" class="view-section">
-        <div class="grid-2">
-            <div class="card">
-                <h3><i class="fas fa-check-circle"></i> Tasa de Calidad de Datos (QC)</h3>
-                <div style="display: flex; justify-content: space-around; align-items: center;">
+        <div id="admin" class="view-section">
+            <div class="grid-3">
+                <div class="card">
+                    <h3><i class="fas fa-car-side"></i> Entradas Hoy</h3>
+                    <div id="admin-entries-today" class="kpi-big">0</div>
+                    <div class="kpi-sub">Vehículos en tiempo real</div>
+                </div>
+                <div class="card">
+                    <h3><i class="fas fa-clock"></i> Hora Pico (Histórico)</h3>
+                    <div id="admin-peak-hour" class="kpi-big">--:--</div>
+                    <div class="kpi-sub">Mayor afluencia 24h</div>
+                </div>
+                <div class="card">
+                    <h3><i class="fas fa-cloud-sun"></i> Promedio Semanal</h3>
+                    <div id="admin-weekly-avg" class="kpi-big">-- °C</div>
+                    <div class="kpi-sub">Temperatura media</div>
+                </div>
+            </div>
+
+            <div class="card" style="border: 2px solid #0078d4; margin-top: 30px;">
+                <h3><i class="fas fa-cloud"></i> Respaldo en la Nube (Azure Storage)</h3>
+                <p style="font-size: 0.85em; color: #666; margin-bottom: 15px;">
+                    Consulta y visualiza datos almacenados en la nube Azure.
+                </p>
+
+                <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 15px;">
                     <div>
-                        <div id="tech-qc-rate" class="kpi-big" style="color: #2980b9;">100%</div>
-                        <div class="kpi-sub">Aprobación</div>
+                        <label style="font-weight: bold; font-size: 0.9em;">Fecha Inicio:</label><br>
+                        <input type="datetime-local" id="azure-start-date"
+                            style="padding: 8px; border: 1px solid #ccc; border-radius: 5px;">
                     </div>
-                    <div style="text-align: left; font-size: 0.9em; color: #666;">
-                        <div>Total Msgs: <span id="tech-total-msgs">0</span></div>
-                        <div>Rechazados: <span id="tech-rejected-msgs" style="color: red;">0</span></div>
+                    <div>
+                        <label style="font-weight: bold; font-size: 0.9em;">Fecha Fin:</label><br>
+                        <input type="datetime-local" id="azure-end-date"
+                            style="padding: 8px; border: 1px solid #ccc; border-radius: 5px;">
+                    </div>
+                    <button onclick="loadAzureHistoricalData()" class="nav-btn"
+                        style="background: #0078d4; color: white; border: none; padding: 10px 20px;">
+                        <i class="fas fa-download"></i> Cargar Datos
+                    </button>
+                    <button onclick="loadLatestAzureData()" class="nav-btn"
+                        style="background: #107c10; color: white; border: none; padding: 10px 20px;">
+                        <i class="fas fa-bolt"></i> Último Registro
+                    </button>
+                </div>
+
+                <div id="azure-status"
+                    style="padding: 10px; background: #f5f5f5; border-radius: 5px; margin-bottom: 10px; font-size: 0.9em;">
+                    <i class="fas fa-info-circle"></i> <span id="azure-status-text">Esperando consulta...</span>
+                </div>
+
+                <div id="azure-data-preview"
+                    style="max-height: 300px; overflow-y: auto; background: #f9f9f9; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 0.85em;">
+                    <div style="color: #999; text-align: center;">No hay datos cargados aún</div>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="card">
+                    <h3>1. Flujo de Entradas por Hora (Promedio)</h3>
+                    <div style="height: 250px;">
+                        <canvas id="hourlyFlowChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>2. Total de Entradas Diarias (Últimos 7 días)</h3>
+                    <div style="height: 250px;">
+                        <canvas id="dailyEntriesChart"></canvas>
                     </div>
                 </div>
             </div>
+
+            <div class="card" style="margin-bottom: 20px;">
+                <h3>3. Condiciones Ambientales (Tendencia Semanal)</h3>
+                <div style="height: 300px;">
+                    <canvas id="environmentalChart"></canvas>
+                </div>
+            </div>
+
             <div class="card">
-                <h3><i class="fas fa-exclamation-triangle"></i> Diagnóstico de Fallos QC</h3>
-                <div id="tech-qc-log" style="height: 80px; overflow-y: auto; font-size: 0.9em; color: #c0392b;">
-                    <div style="color: #aaa;">Sin fallos registrados...</div>
+                <h3><i class="fas fa-stopwatch"></i> Monitor Ambiental en Vivo (Segundos/Minutos)</h3>
+                <div style="height: 300px;">
+                    <canvas id="realtimeEnvChart"></canvas>
+                </div>
+            </div>
+
+
+        </div>
+
+        <div id="tech" class="view-section">
+            <div class="grid-2">
+                <div class="card">
+                    <h3><i class="fas fa-check-circle"></i> Tasa de Calidad de Datos (QC)</h3>
+                    <div style="display: flex; justify-content: space-around; align-items: center;">
+                        <div>
+                            <div id="tech-qc-rate" class="kpi-big" style="color: #2980b9;">100%</div>
+                            <div class="kpi-sub">Aprobación</div>
+                        </div>
+                        <div style="text-align: left; font-size: 0.9em; color: #666;">
+                            <div>Total Msgs: <span id="tech-total-msgs">0</span></div>
+                            <div>Rechazados: <span id="tech-rejected-msgs" style="color: red;">0</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3><i class="fas fa-exclamation-triangle"></i> Diagnóstico de Fallos QC</h3>
+                    <div id="tech-qc-log" style="height: 80px; overflow-y: auto; font-size: 0.9em; color: #c0392b;">
+                        <div style="color: #aaa;">Sin fallos registrados...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom: 20px;">
+                <h3>Estado de Actuadores (Tiempo Real)</h3>
+                <div style="display: flex; justify-content: space-around;">
+                    <div class="indicator-box">
+                        <i id="icon-barrier" class="fas fa-minus-circle indicator-icon actuator-off"></i>
+                        <span>Barrera</span>
+                    </div>
+                    <div class="indicator-box">
+                        <i id="icon-light" class="fas fa-lightbulb indicator-icon actuator-off"></i>
+                        <span>Luces Parking</span>
+                    </div>
+                    <div class="indicator-box">
+                        <i id="icon-buzzer" class="fas fa-volume-up indicator-icon actuator-off"></i>
+                        <span>Alarma Temp</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="background: #2c3e50; border: none;">
+                <h3 style="color: white; border-bottom-color: #555;">Log de Sensores (JSON Crudo)</h3>
+                <div id="tech-raw-log" class="log-container">
                 </div>
             </div>
         </div>
 
-        <div class="card" style="margin-bottom: 20px;">
-            <h3>Estado de Actuadores (Tiempo Real)</h3>
-            <div style="display: flex; justify-content: space-around;">
-                <div class="indicator-box">
-                    <i id="icon-barrier" class="fas fa-minus-circle indicator-icon actuator-off"></i>
-                    <span>Barrera</span>
-                </div>
-                <div class="indicator-box">
-                    <i id="icon-light" class="fas fa-lightbulb indicator-icon actuator-off"></i>
-                    <span>Luces Parking</span>
-                </div>
-                <div class="indicator-box">
-                    <i id="icon-buzzer" class="fas fa-volume-up indicator-icon actuator-off"></i>
-                    <span>Alarma Temp</span>
+        <div id="ai_analytics" class="view-section">
+            <div class="card" style="margin-bottom: 20px;">
+                <h3><i class="fas fa-robot"></i> Configuración de Análisis (Fog Computing)</h3>
+                <div style="display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap;">
+                    <div>
+                        <label style="font-weight: bold; font-size: 0.9em;">Fecha Inicio:</label><br>
+                        <input type="datetime-local" id="ai-start-date"
+                            style="padding: 8px; border: 1px solid #ccc; border-radius: 5px;">
+                    </div>
+                    <div>
+                        <label style="font-weight: bold; font-size: 0.9em;">Fecha Fin:</label><br>
+                        <input type="datetime-local" id="ai-end-date"
+                            style="padding: 8px; border: 1px solid #ccc; border-radius: 5px;">
+                    </div>
+                    <div>
+                        <label style="font-weight: bold; font-size: 0.9em;">Grupos (Clusters):</label><br>
+                        <input type="number" id="ai-clusters" value="3" min="2" max="5"
+                            style="padding: 8px; width: 60px; border: 1px solid #ccc; border-radius: 5px;">
+                    </div>
+                    <button onclick="requestAnalysis()" class="nav-btn"
+                        style="background: #8e44ad; color: white; border: none;">
+                        <i class="fas fa-play"></i> Ejecutar Análisis
+                    </button>
                 </div>
             </div>
-        </div>
 
-        <div class="card" style="background: #2c3e50; border: none;">
-            <h3 style="color: white; border-bottom-color: #555;">Log de Sensores (JSON Crudo)</h3>
-            <div id="tech-raw-log" class="log-container">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>CLUSTERING (K-Means)</h3>
+                    <p style="font-size: 0.8em; color: #666;">Agrupación automática por patrones de Temp vs Humedad.</p>
+                    <div style="height: 350px;">
+                        <canvas id="clusterChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>INFERENCIA (Regresión Lineal)</h3>
+                    <p style="font-size: 0.8em; color: #666;">Predicción de tendencia de temperatura a futuro.</p>
+                    <div style="height: 350px;">
+                        <canvas id="inferenceChart"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <div id="ai_analytics" class="view-section">
-        <div class="card" style="margin-bottom: 20px;">
-            <h3><i class="fas fa-robot"></i> Configuración de Análisis (Fog Computing)</h3>
-            <div style="display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap;">
-                <div>
-                    <label style="font-weight: bold; font-size: 0.9em;">Fecha Inicio:</label><br>
-                    <input type="datetime-local" id="ai-start-date" style="padding: 8px; border: 1px solid #ccc; border-radius: 5px;">
-                </div>
-                <div>
-                    <label style="font-weight: bold; font-size: 0.9em;">Fecha Fin:</label><br>
-                    <input type="datetime-local" id="ai-end-date" style="padding: 8px; border: 1px solid #ccc; border-radius: 5px;">
-                </div>
-                <div>
-                    <label style="font-weight: bold; font-size: 0.9em;">Grupos (Clusters):</label><br>
-                    <input type="number" id="ai-clusters" value="3" min="2" max="5" style="padding: 8px; width: 60px; border: 1px solid #ccc; border-radius: 5px;">
-                </div>
-                <button onclick="requestAnalysis()" class="nav-btn" style="background: #8e44ad; color: white; border: none;">
-                    <i class="fas fa-play"></i> Ejecutar Análisis
-                </button>
-            </div>
-        </div>
-
-        <div class="grid-2">
-            <div class="card">
-                <h3>CLUSTERING (K-Means)</h3>
-                <p style="font-size: 0.8em; color: #666;">Agrupación automática por patrones de Temp vs Humedad.</p>
-                <div style="height: 350px;">
-                    <canvas id="clusterChart"></canvas>
-                </div>
-            </div>
-            <div class="card">
-                <h3>INFERENCIA (Regresión Lineal)</h3>
-                <p style="font-size: 0.8em; color: #666;">Predicción de tendencia de temperatura a futuro.</p>
-                <div style="height: 350px;">
-                    <canvas id="inferenceChart"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script src="script.js"></script>
+    <script src="script.js"></script>
 </body>
+
 </html>
