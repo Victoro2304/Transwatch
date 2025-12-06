@@ -244,7 +244,6 @@ Container: datatranswatch
 cd fog-layer
 
 # Instalar dependencias Python
-pip install -r requirements.txt  # (crear si no existe)
 pip install scikit-learn pandas numpy paho-mqtt influxdb-client-3
 
 # Configurar InfluxDB (si usas Docker)
