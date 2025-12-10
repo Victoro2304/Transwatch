@@ -609,6 +609,7 @@ async function loadAzureHistoricalData() {
 
         updateAzureStatus('success', `${data.length} registros cargados exitosamente desde Azure`);
         displayAzureData(data);
+        updateAdminChartsWithAzureData(data);
 
     } catch (error) {
         console.error('Error cargando datos de Azure:', error);
@@ -690,4 +691,105 @@ function displayAzureData(data) {
     }
 
     previewDiv.innerHTML = html;
+}
+
+/**
+ * Actualiza las gráficas de administrador con datos históricos de Azure
+ */
+function updateAdminChartsWithAzureData(data) {
+    if (!data || data.length === 0) return;
+
+    // 1. FLUJO POR HORA - Agrupar datos por hora y contar entradas
+    const hourlyData = {};
+    
+    data.forEach(item => {
+        if (item._timestamp && item.vehiculo_en_entrada_detectado) {
+            const date = new Date(item._timestamp);
+            const hour = date.getHours();
+            hourlyData[hour] = (hourlyData[hour] || 0) + 1;
+        }
+    });
+
+    // Preparar labels y datos para el gráfico horario
+    const hourLabels = [];
+    const hourCounts = [];
+    for (let h = 0; h < 24; h += 2) {
+        hourLabels.push(`${h.toString().padStart(2, '0')}:00`);
+        hourCounts.push(hourlyData[h] || 0);
+    }
+
+    if (adminCharts.hourly) {
+        adminCharts.hourly.data.labels = hourLabels;
+        adminCharts.hourly.data.datasets[0].data = hourCounts;
+        adminCharts.hourly.update();
+    }
+
+    // 2. ENTRADAS DIARIAS - Agrupar por día
+    const dailyData = {};
+    
+    data.forEach(item => {
+        if (item._timestamp && item.vehiculo_en_entrada_detectado) {
+            const date = new Date(item._timestamp);
+            const dayKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
+            dailyData[dayKey] = (dailyData[dayKey] || 0) + 1;
+        }
+    });
+
+    // Ordenar por fecha y tomar últimos 7 días
+    const sortedDays = Object.keys(dailyData).sort();
+    const last7Days = sortedDays.slice(-7);
+    
+    const dailyLabels = last7Days.map(day => {
+        const d = new Date(day);
+        return `${d.getDate()}/${d.getMonth() + 1}`;
+    });
+    const dailyCounts = last7Days.map(day => dailyData[day]);
+
+    if (adminCharts.daily) {
+        adminCharts.daily.data.labels = dailyLabels;
+        adminCharts.daily.data.datasets[0].data = dailyCounts;
+        adminCharts.daily.update();
+    }
+
+    // 3. CONDICIONES AMBIENTALES - Agrupar por día y promediar
+    const dailyEnv = {};
+    
+    data.forEach(item => {
+        if (item._timestamp && item.temperatura_celsius !== undefined && item.humedad_porcentaje !== undefined) {
+            const date = new Date(item._timestamp);
+            const dayKey = date.toISOString().split('T')[0];
+            
+            if (!dailyEnv[dayKey]) {
+                dailyEnv[dayKey] = { temps: [], humids: [] };
+            }
+            dailyEnv[dayKey].temps.push(item.temperatura_celsius);
+            dailyEnv[dayKey].humids.push(item.humedad_porcentaje);
+        }
+    });
+
+    // Calcular promedios y ordenar
+    const envDays = Object.keys(dailyEnv).sort().slice(-7);
+    const envLabels = envDays.map(day => {
+        const d = new Date(day);
+        return `${d.getDate()}/${d.getMonth() + 1}`;
+    });
+    
+    const avgTemps = envDays.map(day => {
+        const temps = dailyEnv[day].temps;
+        return temps.reduce((a, b) => a + b, 0) / temps.length;
+    });
+    
+    const avgHumids = envDays.map(day => {
+        const humids = dailyEnv[day].humids;
+        return humids.reduce((a, b) => a + b, 0) / humids.length;
+    });
+
+    if (adminCharts.env) {
+        adminCharts.env.data.labels = envLabels;
+        adminCharts.env.data.datasets[0].data = avgTemps;
+        adminCharts.env.data.datasets[1].data = avgHumids;
+        adminCharts.env.update();
+    }
+
+    console.log('Gráficas de administrador actualizadas con datos de Azure');
 }
